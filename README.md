@@ -47,6 +47,8 @@ poetry run pytest tests/ -v
 
 14 tests, all mocked — no API keys required.
 
+CI runs automatically on push and PR — see `.github/workflows/ci.yml`.
+
 ## Running Traces + Evaluations
 
 ```bash
