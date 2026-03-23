@@ -1,4 +1,16 @@
+# TravelShaper — AI Travel Assistant
 
+An intelligent travel planning assistant powered by LLM agents. TravelShaper helps you find flights, hotels, and cultural insights for your destination — all through a single conversation.
+
+Built with LangGraph, FastAPI, and instrumented with Arize Phoenix for observability and evaluation. Accessible via a browser chat interface at `http://localhost:8000` or directly through the REST API.
+
+---
+
+## What TravelShaper Does
+
+You tell TravelShaper where you're coming from, where you want to go, your rough travel dates, and what matters to you. It searches live flight and hotel data, gathers cultural and destination intelligence from the web, and delivers a curated travel briefing — not a wall of links, but an opinionated recommendation.
+
+### How It Works
 **1. You fill in the form**
 
 TravelShaper's browser interface asks for five structured fields — no need to compose the perfect sentence:
