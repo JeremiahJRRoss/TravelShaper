@@ -1,0 +1,303 @@
+# Evaluation Prompts — TravelShaper Travel Assistant
+
+**These are the exact prompts to use in the Phoenix evaluation pipeline.**
+
+---
+
+## Evaluation 1: User Frustration
+
+### Purpose
+Detect traces where the agent's response would likely frustrate the user: incomplete answers, ignored requests, hallucinated details, or unhelpful responses.
+
+### LLM-as-judge prompt
+
+```python
+USER_FRUSTRATION_PROMPT = """\
+You are evaluating an AI travel assistant's response for signs of user frustration.
+
+Given the user's message and the assistant's response, determine whether the user \
+would likely be frustrated with the response.
+
+A response IS frustrating if any of the following are true:
+- The user asked about flights but the response contains no flight information
+- The user asked about hotels but the response contains no hotel information
+- The user asked about a specific destination but the response is generic and not destination-specific
+- The response says "I cannot help with that" or refuses to act when the request is reasonable
+- The response contains obviously fabricated specifics (fake hotel names, made-up prices) not from tool results
+- The response ignores a key part of the user's request (e.g., user asked for budget options but got luxury only)
+- The response is extremely short or vague when the user asked a detailed question
+
+A response is NOT frustrating if:
+- It provides useful partial information and acknowledges what it couldn't find
+- It addresses the main request even if some details are missing
+- It asks a reasonable clarifying question when the input is truly ambiguous
+
+User message: {input}
+
+Assistant response: {output}
+
+Tool calls made: {tool_calls}
+
+Respond with ONLY a JSON object:
+{{
+  "label": "frustrated" or "not_frustrated",
+  "score": 0 or 1,
+  "explanation": "One sentence explaining your judgment."
+}}
+"""
+```
+
+### Implementation
+
+```python
+from phoenix.evals import llm_classify, OpenAIModel
+
+# Define the evaluation model
+eval_model = OpenAIModel(model="gpt-4o", temperature=0)
+
+# Run evaluation on spans dataframe
+frustration_results = llm_classify(
+    dataframe=spans_df,
+    template=USER_FRUSTRATION_PROMPT,
+    model=eval_model,
+    rails=["frustrated", "not_frustrated"],
+    provide_explanation=True,
+)
+```
+
+### Expected distribution
+With well-crafted queries (see trace-queries.md):
+- Queries 1-3, 6-8, 10: should be "not_frustrated" (clear requests with tool results)
+- Query 4: could be either (no flights/hotels, but cultural info is provided)
+- Query 5: should be "not_frustrated" (interest-based, web search handles it)
+- Query 9: most likely "not_frustrated" if agent gives destination suggestions, "frustrated" if it refuses
+
+---
+
+## Evaluation 2: Tool Usage Correctness
+
+### Purpose
+Assess whether the agent selected appropriate tools for the user's request and passed valid parameters.
+
+### LLM-as-judge prompt
+
+```python
+TOOL_CORRECTNESS_PROMPT = """\
+You are evaluating whether an AI travel assistant used its tools correctly.
+
+The assistant has access to these tools:
+- search_flights: Search for flights. Requires departure airport code, arrival airport code, and dates.
+- search_hotels: Search for hotels. Requires a destination query and dates.
+- get_cultural_guide: Get etiquette, language, and dress guidance for a destination.
+- duckduckgo_search: General web search for interests, events, activities, and fallback queries.
+
+Given the user's message and the tools that were called, evaluate:
+
+1. Were the RIGHT tools called? (Did the agent search flights when the user asked about flights?)
+2. Were any NECESSARY tools missed? (Did the agent skip cultural guide for an international trip?)
+3. Were tool PARAMETERS valid? (Did the agent pass proper airport codes, not city names? Were dates in YYYY-MM-DD format?)
+4. Were any UNNECESSARY tools called? (Did the agent search flights when the user only asked about food?)
+
+User message: {input}
+
+Tools called and their inputs:
+{tool_calls}
+
+Respond with ONLY a JSON object:
+{{
+  "label": "correct" or "incorrect",
+  "score": 0 or 1,
+  "explanation": "One sentence explaining your judgment. Mention specific tools that were correctly used, missed, or misused."
+}}
+"""
+```
+
+### Implementation
+
+```python
+tool_correctness_results = llm_classify(
+    dataframe=spans_df,
+    template=TOOL_CORRECTNESS_PROMPT,
+    model=eval_model,
+    rails=["correct", "incorrect"],
+    provide_explanation=True,
+)
+```
+
+### Expected distribution
+- Most queries should be "correct" if the system prompt is well-crafted
+- Common failure modes to look for:
+  - Agent passes "San Francisco" instead of "SFO" to search_flights
+  - Agent skips get_cultural_guide for international destinations
+  - Agent calls search_flights when user only asked about cultural info
+  - Agent passes malformed dates
+
+---
+
+## Integration: evaluations/run_evals.py
+
+The run_evals.py script imports prompts from the metrics modules. This matches the project structure in the README.
+
+**evaluations/metrics/frustration.py:**
+```python
+"""User frustration evaluation metric."""
+
+USER_FRUSTRATION_PROMPT = """\
+You are evaluating an AI travel assistant's response for signs of user frustration.
+
+Given the user's message and the assistant's response, determine whether the user \
+would likely be frustrated with the response.
+
+A response IS frustrating if any of the following are true:
+- The user asked about flights but the response contains no flight information
+- The user asked about hotels but the response contains no hotel information
+- The user asked about a specific destination but the response is generic and not destination-specific
+- The response says "I cannot help with that" or refuses to act when the request is reasonable
+- The response contains obviously fabricated specifics (fake hotel names, made-up prices) not from tool results
+- The response ignores a key part of the user's request (e.g., user asked for budget options but got luxury only)
+- The response is extremely short or vague when the user asked a detailed question
+
+A response is NOT frustrating if:
+- It provides useful partial information and acknowledges what it couldn't find
+- It addresses the main request even if some details are missing
+- It asks a reasonable clarifying question when the input is truly ambiguous
+
+User message: {input}
+
+Assistant response: {output}
+
+Tool calls made: {tool_calls}
+
+Respond with ONLY a JSON object:
+{{"label": "frustrated" or "not_frustrated", "score": 0 or 1, "explanation": "One sentence explaining your judgment."}}
+"""
+```
+
+**evaluations/metrics/tool_correctness.py:**
+```python
+"""Tool usage correctness evaluation metric."""
+
+TOOL_CORRECTNESS_PROMPT = """\
+You are evaluating whether an AI travel assistant used its tools correctly.
+
+The assistant has access to these tools:
+- search_flights: Search for flights. Requires departure airport code, arrival airport code, and dates.
+- search_hotels: Search for hotels. Requires a destination query and dates.
+- get_cultural_guide: Get etiquette, language, and dress guidance for a destination.
+- duckduckgo_search: General web search for interests, events, activities, and fallback queries.
+
+Given the user's message and the tools that were called, evaluate:
+
+1. Were the RIGHT tools called? (Did the agent search flights when the user asked about flights?)
+2. Were any NECESSARY tools missed? (Did the agent skip cultural guide for an international trip?)
+3. Were tool PARAMETERS valid? (Did the agent pass proper airport codes, not city names? Were dates in YYYY-MM-DD format?)
+4. Were any UNNECESSARY tools called? (Did the agent search flights when the user only asked about food?)
+
+User message: {input}
+
+Tools called and their inputs:
+{tool_calls}
+
+Respond with ONLY a JSON object:
+{{"label": "correct" or "incorrect", "score": 0 or 1, "explanation": "One sentence explaining your judgment. Mention specific tools that were correctly used, missed, or misused."}}
+"""
+```
+
+**evaluations/run_evals.py:**
+```python
+"""Run Phoenix evaluations on captured TravelShaper traces."""
+
+import phoenix as px
+from phoenix.evals import llm_classify, OpenAIModel
+from phoenix.trace import SpanEvaluations
+
+from evaluations.metrics.frustration import USER_FRUSTRATION_PROMPT
+from evaluations.metrics.tool_correctness import TOOL_CORRECTNESS_PROMPT
+
+# Connect to Phoenix
+client = px.Client()
+
+# Get spans
+spans_df = client.get_spans_dataframe()
+
+# Filter to root spans (one per user request)
+root_spans = spans_df[spans_df["parent_id"].isna()].copy()
+
+if root_spans.empty:
+    print("No traces found. Run some queries first.")
+    exit(1)
+
+print(f"Found {len(root_spans)} traces. Running evaluations...")
+
+# Evaluation model
+eval_model = OpenAIModel(model="gpt-4o", temperature=0)
+
+# --- User Frustration ---
+# NOTE: Template variables {input}, {output}, {tool_calls} must map to span DataFrame columns.
+# Phoenix span columns are typically: "attributes.input.value", "attributes.output.value".
+# You may need to rename columns or use provide a `template_variables` mapping.
+# Check Phoenix docs: https://arize.com/docs/phoenix/evaluation/python-quickstart
+
+frustration_results = llm_classify(
+    dataframe=root_spans,
+    template=USER_FRUSTRATION_PROMPT,
+    model=eval_model,
+    rails=["frustrated", "not_frustrated"],
+    provide_explanation=True,
+)
+
+client.log_evaluations(
+    SpanEvaluations(
+        eval_name="User Frustration",
+        dataframe=frustration_results,
+    )
+)
+
+frustrated_count = (frustration_results["label"] == "frustrated").sum()
+total = len(frustration_results)
+print(f"User Frustration: {frustrated_count}/{total} frustrated ({frustrated_count/total*100:.0f}%)")
+
+# --- Tool Correctness ---
+tool_correctness_results = llm_classify(
+    dataframe=root_spans,
+    template=TOOL_CORRECTNESS_PROMPT,
+    model=eval_model,
+    rails=["correct", "incorrect"],
+    provide_explanation=True,
+)
+
+client.log_evaluations(
+    SpanEvaluations(
+        eval_name="Tool Usage Correctness",
+        dataframe=tool_correctness_results,
+    )
+)
+
+correct_count = (tool_correctness_results["label"] == "correct").sum()
+total = len(tool_correctness_results)
+print(f"Tool Correctness: {correct_count}/{total} correct ({correct_count/total*100:.0f}%)")
+
+# --- Create frustrated dataset ---
+frustrated_df = root_spans[frustration_results["label"] == "frustrated"]
+if not frustrated_df.empty:
+    dataset = client.upload_dataset(
+        dataframe=frustrated_df,
+        dataset_name="frustrated_interactions",
+        input_keys=["attributes.input.value"],
+        output_keys=["attributes.output.value"],
+    )
+    print(f"Created 'frustrated_interactions' dataset with {len(frustrated_df)} examples.")
+else:
+    print("No frustrated interactions found — no dataset created.")
+
+print("Evaluations complete. View results in Phoenix UI at http://localhost:6006")
+```
+
+---
+
+## Notes
+
+- The `{input}`, `{output}`, and `{tool_calls}` placeholders are filled by Phoenix from span attributes. Check Phoenix docs for the exact column names — they may be `attributes.input.value`, `attributes.output.value`, etc.
+- The evaluation model uses GPT-4o at temperature=0 for deterministic judgments.
+- The frustrated interactions dataset (Step 6 requirement) is created automatically from evaluation results.
+- Run evaluations AFTER the 10 trace queries have been executed, not before.
