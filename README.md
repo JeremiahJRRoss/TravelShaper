@@ -129,7 +129,7 @@ Every briefing includes a preparation section tailored for American travelers:
 
 ### The preferred method is to use Docker Compose
 
-** 1. Configure environment variables **
+**1. Configure environment variables**
 
 ```bash
 cp .env.example .env
@@ -142,7 +142,7 @@ OPENAI_API_KEY=your_openai_key_here
 SERPAPI_API_KEY=your_serpapi_key_here
 ```
 
-** 2. Docker Compose (includes Phoenix): **
+**2. Docker Compose (includes Phoenix):**
 
 ```bash
 docker-compose build --no-cache
@@ -157,14 +157,12 @@ This starts both the TravelShaper API on port 8000 and Phoenix UI on port 6006.
 
 > **Note:** The `docker-compose.yml` is included in the repository. If running Phoenix separately, see the Observability section below.
 
-Build and run:
+**Alternative container build method (for if you can't use docker compose):**
 
 ```bash
 docker build -t travelshaper .
 docker run -p 8000:8000 --env-file .env travelshaper
 ```
-
-Or with 
 
 
 ### An alternate method is to run the app in a python3 environment
