@@ -1,42 +1,37 @@
-# TravelShaper — AI Travel Assistant
 
-An intelligent travel planning assistant powered by LLM agents. TravelShaper helps you find flights, hotels, and cultural insights for your destination — all through a single conversation.
+**1. You fill in the form**
 
-Built with LangGraph, FastAPI, and instrumented with Arize Phoenix for observability and evaluation. Accessible via a browser chat interface at `http://localhost:8000` or directly through the REST API.
+TravelShaper's browser interface asks for five structured fields — no need to compose the perfect sentence:
 
----
+| Field | What you enter |
+|-------|----------------|
+| **Departing from** | Your city or region — TravelShaper finds the nearest airport |
+| **Destination** | Where you're headed |
+| **Departure date** | A specific date — pick it from the calendar |
+| **Duration** | 1, 2, 3, or 4 weeks |
+| **Budget** | One toggle: *Save money* or *Full experience* |
 
-## What TravelShaper Does
+Then select your interests — Food, Arts, Photography, Nature, Fitness, or Nightlife — and hit **Plan my trip.**
 
-You tell TravelShaper where you're coming from, where you want to go, your rough travel dates, and what matters to you. It searches live flight and hotel data, gathers cultural and destination intelligence from the web, and delivers a curated travel briefing — not a wall of links, but an opinionated recommendation.
+**2. Tell TravelShaper more (optional)**
 
-### The Conversation Flow
+Below the main form is a free-text preferences field where you can say anything that doesn't fit the checkboxes. This is where the real personality comes through. Some examples of what people actually write:
 
-**1. You share your trip details**
+> *"I want to leave feeling like I understand the history and natural landscape of the place — not just the tourist version of it."*
 
-TravelShaper asks for five things through natural conversation:
+> *"I'm travelling with an elderly couple. We need a safe, walkable neighbourhood where nobody has to think too hard about getting around."*
 
-| Detail | Example |
-|--------|---------|
-| **Origin** | "I'm flying out of San Francisco" |
-| **Destination** | "I want to go to Tokyo" |
-| **Dates** | "Sometime in mid-October, about 10 days" |
-| **Budget style** | "I want the full experience" or "I'm trying to save money" |
-| **Interests** | "I'm into food, photography, and art" |
+> *"I have a 5-year-old with me. Everything needs to be kid-friendly — ideally places where a tantrum won't ruin anyone's evening."*
 
-TravelShaper works best when you include all five details in a single message. For the richest results, be specific — "I'm flying from SFO to Tokyo in mid-October for 10 days, budget-friendly, and I love food and photography" gives TravelShaper everything it needs in one shot.
+> *"I'm a solo woman traveller. I'd love to know which areas feel genuinely safe at night and which ones I should avoid."*
 
-> **Note:** The current implementation is single-turn — each `/chat` request is independent. In a production version, conversation memory would allow multi-turn back-and-forth where TravelShaper asks follow-ups across messages. For now, include as much detail as possible in your initial request.
+> *"We're celebrating a 25th anniversary. I want at least one moment that feels genuinely special — not a tourist package, something real."*
 
-You can also include optional details, and TravelShaper will factor them in:
+> *"I'm pescatarian and my partner keeps halal. Food options matter a lot to us."*
 
-- Direct flights only
-- Hotel budget cap (e.g., "under $100/night")
-- Solo traveler, couple, or family
-- Preferred neighborhood style (walkable, quiet, nightlife-friendly)
-- Accessibility needs
-- Walking tolerance ("I can walk all day" vs. "I prefer short distances")
-- Interest in trains or day trips from the destination
+TravelShaper safety-checks this field before use and folds your preferences into every search and recommendation it makes. Up to 500 characters.
+
+> **Note:** The current implementation is single-turn — each request is independent. Include as much as you can in one go for the richest results. Multi-turn conversation memory is a planned production enhancement.
 
 **2. TravelShaper searches on your behalf**
 
@@ -126,7 +121,7 @@ Every briefing includes a preparation section tailored for American travelers:
 
 ```bash
 git clone <your-repo-url>
-cd se-interview
+cd src
 ```
 
 2. Create and activate a virtual environment:
@@ -189,7 +184,12 @@ docker run -p 8000:8000 --env-file .env travelshaper
 Or with Docker Compose (includes Phoenix):
 
 ```bash
-docker-compose up
+docker-compose build --no-cache
+docker-compose up -d
+```
+To stop both containers (TravelShaper & Arize)
+```bash
+docker-compose down
 ```
 
 This starts both the TravelShaper API on port 8000 and Phoenix UI on port 6006.
