@@ -123,7 +123,7 @@ fire 7 "Bangkok · Hotels only · Single tool" \
 '{
   "message": "I am already booked on a flight to Bangkok, Thailand. I need budget hotel options only — check-in January 5 2027, check-out January 12 2027. Save money mode. No flights, no cultural guide, just hotels.",
   "destination": "Bangkok, Thailand",
-  "preferences": "I need AC that actually works and a bathroom I am not scared of. That is the full list of requirements."
+  "preferences": "I would like a safe, clean, trip that focuses on learning about the religious history in the region"
 }'
 
 # ============================================================
