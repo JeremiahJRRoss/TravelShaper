@@ -25,6 +25,11 @@ from pydantic import BaseModel, Field
 
 from agent import build_agent
 
+try:
+    from opentelemetry import trace as otel_trace
+except ImportError:
+    otel_trace = None  # OpenTelemetry not installed — skip custom spans
+
 # ---------------------------------------------------------------------------
 # App + agent
 # ---------------------------------------------------------------------------
@@ -307,7 +312,21 @@ def chat(request: ChatRequest) -> ChatResponse:
             raise HTTPException(status_code=400, detail=f"Your additional preferences could not be used: {result.reason}")
 
     full_message = build_agent_message(request.message, request.preferences)
-    agent_result = agent.invoke({"messages": [HumanMessage(content=full_message)]})
+
+    if otel_trace is not None:
+        tracer = otel_trace.get_tracer("travelshaper")
+        with tracer.start_as_current_span("travelshaper.request") as span:
+            span.set_attribute("travelshaper.destination", request.destination or "")
+            span.set_attribute("travelshaper.departure", request.departure or "")
+            span.set_attribute("travelshaper.budget_mode",
+                               "save_money" if "save money" in request.message.lower()
+                               else "full_experience")
+            span.set_attribute("travelshaper.has_preferences",
+                               bool(request.preferences and request.preferences.strip()))
+            agent_result = agent.invoke({"messages": [HumanMessage(content=full_message)]})
+    else:
+        agent_result = agent.invoke({"messages": [HumanMessage(content=full_message)]})
+
     return ChatResponse(response=agent_result["messages"][-1].content)
 
 
