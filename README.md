@@ -4,17 +4,25 @@ AI travel planning assistant — fill in a form, get an opinionated briefing wit
 
 ## Quick Start
 
-Prerequisites: Python 3.11+, Docker, an [OpenAI](https://platform.openai.com) API key, a [SerpAPI](https://serpapi.com) key.
-
 ```bash
-cp .env.example .env          # add OPENAI_API_KEY and SERPAPI_API_KEY
-docker-compose build --no-cache
-docker-compose up -d
+git clone <your-repo-url>
+cd src
+./setup.sh
 ```
 
-Open [http://localhost:8000](http://localhost:8000) (app) and [http://localhost:6006](http://localhost:6006) (Phoenix tracing UI).
+This checks prerequisites, configures API keys, and starts the app and Phoenix via Docker Compose.
 
-Stop everything: `docker-compose down`
+When it finishes:
+
+- **App:** [http://localhost:8000](http://localhost:8000)
+- **Phoenix:** [http://localhost:6006](http://localhost:6006)
+
+Tests run without API keys or Docker:
+
+```bash
+poetry install -E dev
+pytest tests/ -v
+```
 
 For alternative methods (local venv, standalone Docker), see [RUNNING.md](src/RUNNING.md).
 
