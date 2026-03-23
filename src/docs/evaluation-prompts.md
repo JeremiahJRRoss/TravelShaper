@@ -4,6 +4,38 @@
 
 ---
 
+## Why These Metrics
+
+The three evaluation metrics weren't chosen from a generic checklist — they target specific failure modes observed during development and trace analysis. Each metric exists because the system failed in a particular way that needed a dedicated detector.
+
+### User Frustration — chosen because of silent tool failures
+
+When a SerpAPI call returns empty results (thin coverage for a niche destination, rate limit hit, or timeout), the agent doesn't crash — it receives a "No flights found" string from the tool. The LLM then has to decide what to do with that gap. In some cases, the agent produces a response that simply omits the missing section without acknowledging it. The user asked for flights and hotels but only got hotels — and the response doesn't say why.
+
+A second failure mode: the agent occasionally ignores the user's budget preference. The system prompt instructs it to set `sort_by=3` for budget travelers, but on some runs the LLM passes `sort_by=13` anyway (or doesn't pass it at all, defaulting to highest rating). The user asked to save money and got luxury hotel recommendations. The response is coherent but wrong for the user's stated needs.
+
+The user frustration evaluator catches both patterns — responses that omit requested information and responses that contradict the user's stated preferences. Using Phoenix's built-in `USER_FRUSTRATION_PROMPT_TEMPLATE` rather than a custom prompt was a deliberate choice: it's validated against real conversational patterns and checks for the exact signals these failures produce (incomplete answers, ignored requests).
+
+### Tool Usage Correctness — chosen because of IATA code and parameter errors
+
+The most common tool-level failure is incorrect airport codes. The system prompt includes guidance to convert city names to IATA codes, but the LLM sometimes passes "San Francisco" instead of "SFO", or invents plausible-but-wrong codes for smaller airports. SerpAPI returns empty results, and the agent moves on without flights — a silent failure that cascades into an incomplete briefing.
+
+A second failure mode: the agent occasionally skips `get_cultural_guide` for international destinations, particularly when the user's message is heavily focused on flights or hotels. The system prompt says "always use for international destinations" but the LLM deprioritizes it when the message is logistics-heavy.
+
+A third failure mode: unnecessary tool calls. On vague queries like "I need a break, surprise me" (Query 9 in the trace set), the agent sometimes calls `search_flights` without having a destination — passing empty or hallucinated airport codes. This wastes a SerpAPI call and returns garbage data.
+
+The tool correctness evaluator checks all three dimensions — were the right tools called, were necessary tools missed, and were parameters valid. The prompt explicitly names the four available tools and asks the judge to evaluate selection, completeness, and parameter validity against the user's actual request.
+
+### Answer Completeness — chosen because of partial briefings on scoped requests
+
+TravelShaper's 10 trace queries deliberately include scoped requests — "flights only" (Query 6), "hotels only" (Query 7), "I'm already here, no transport needed" (Query 5). Early in development, the frustration evaluator flagged these as frustrated because they were "missing" sections. But they're not incomplete — the user explicitly asked for a subset. The frustration metric couldn't distinguish "missing because the agent failed" from "missing because the user didn't ask for it."
+
+This created a need for a separate completeness metric with scope awareness. The answer completeness evaluator uses a three-tier classification (complete / partial / incomplete) and its prompt explicitly handles scoped requests: "Do NOT penalise for missing sections the user explicitly excluded or did not request." This means Query 6 (flights only) can score "complete" even though it has no hotel section, while a full trip request that's missing hotels scores "incomplete."
+
+Together with frustration, completeness gives two complementary views — frustration measures the user's likely emotional response, completeness measures whether the response structurally matched the request. A response can be complete but frustrating (all sections present but budget preference ignored) or incomplete but not frustrating (missing one section but the response acknowledges the gap gracefully).
+
+---
+
 ## Evaluation 1: User Frustration
 
 ### Purpose

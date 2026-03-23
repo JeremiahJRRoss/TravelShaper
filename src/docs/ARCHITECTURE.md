@@ -374,6 +374,12 @@ run_evals.py
 
 Evaluators are LLM-as-judge functions: they send the trace data to GPT-4o with an evaluation prompt and receive a label (e.g., `frustrated: true/false`, `tool_correct: true/false`) plus an explanation.
 
+Three metrics were chosen based on failure modes observed during development and trace analysis:
+
+* **User Frustration** catches the most common end-user-visible failure: the agent silently omitting requested information when a tool returns empty results, or contradicting the user's stated budget preference. Uses Phoenix's built-in template for validated detection.
+* **Tool Usage Correctness** catches the most common agent-level failure: incorrect IATA codes passed to `search_flights`, skipped `get_cultural_guide` calls for international trips, and unnecessary tool calls on vague queries. These are invisible to the user but directly cause the incomplete briefings that frustration detects.
+* **Answer Completeness** fills a gap the other two metrics can't cover: distinguishing intentionally scoped responses (user asked for flights only) from unintentionally incomplete ones (agent failed to search hotels). Its three-tier classification (complete/partial/incomplete) with scope-awareness prevents false positives on the 4 scoped queries in the trace set.
+
 ---
 
 ## 8. Tool Design Patterns
