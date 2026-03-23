@@ -59,9 +59,12 @@ TravelShaper is explicitly **not** intended to:
 - Provide persistent conversation memory across separate `/chat` requests
 - Act as a comprehensive rail or ferry booking engine
 - Replace dedicated travel agent services for complex multi-city itineraries
-- Support languages other than English
 
-These are not missing features — they are deliberate boundaries for this implementation.
+## 6. Future goals
+- Highly stylized language support beyond English 
+- Expanded UX functionality
+- Deeper saftey and security considerations
+
 
 ---
 
