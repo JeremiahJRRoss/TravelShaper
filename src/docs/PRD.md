@@ -97,7 +97,7 @@ TravelShaper is explicitly **not** intended to:
 | User accounts or saved trips | No persistence layer beyond Phoenix traces |
 | Full frontend application | The browser UI is intentionally minimal — a single HTML file for demo and development use. A production-grade frontend (React app, mobile app, etc.) is out of scope |
 | Real-time price alerts | No background jobs or push notifications |
-| Multi-language support | English only |
+| Multi-language support | English for MVP |
 
 ### 6.3 Future roadmap (documented, not built)
 
@@ -120,6 +120,7 @@ These are described in the architecture design and presentation but not implemen
 - Collaborative itinerary planning
 - Horizontal scaling with load balancer
 - Persistent message store (Redis or PostgreSQL)
+- Highly stylized support for multiple languges with nuanced / localized UX
 
 ---
 
