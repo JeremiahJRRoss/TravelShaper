@@ -1,10 +1,19 @@
 """User frustration evaluation metric.
 
-Used by evaluations/run_evals.py to classify TravelShaper traces as
-'frustrated' or 'not_frustrated' via Phoenix llm_classify.
+PRIMARY: The built-in USER_FRUSTRATION_PROMPT_TEMPLATE from phoenix.evals
+is used in evaluations/run_evals.py. This is the documented Arize approach
+and is validated against real conversational patterns.
+
+REFERENCE: The custom prompt below (USER_FRUSTRATION_PROMPT_CUSTOM) is kept
+as a reference implementation showing how a domain-specific frustration
+evaluator could be designed for travel assistant use cases.
 """
 
-USER_FRUSTRATION_PROMPT = """\
+# This custom prompt is preserved for reference and comparison.
+# The production evaluation pipeline in run_evals.py uses Phoenix's
+# built-in USER_FRUSTRATION_PROMPT_TEMPLATE instead.
+
+USER_FRUSTRATION_PROMPT_CUSTOM = """\
 You are evaluating an AI travel assistant's response for signs of user frustration.
 
 Given the user's message and the assistant's response, determine whether the user \
