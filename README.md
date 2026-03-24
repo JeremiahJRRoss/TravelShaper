@@ -301,17 +301,6 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-### If you are using Docker
-
-The `docker-compose.yml` does not include a dedicated test service, so you run pytest inside the existing `travelshaper` container:
-
-```bash
-cd src
-docker compose exec travelshaper pytest tests/ -v
-```
-
-If the container is not already running, start it first with `docker compose up -d`, then run the command above.
-
 Expected output: **14 tests passing**.
 
 ---
