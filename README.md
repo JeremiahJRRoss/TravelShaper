@@ -1,30 +1,138 @@
 # TravelShaper
 
-AI travel planning assistant — fill in a form, get an opinionated briefing with flights, hotels, cultural prep, and activity picks.
+**AI travel planning assistant** — fill in a form, get an opinionated briefing with flights, hotels, cultural prep, and activity picks.
 
-## Quick Start
+Every recommendation includes a hyperlink and an explanation of *why* it was chosen. The agent runs two distinct voices depending on budget mode, and the entire request flow is instrumented with Arize Phoenix for observability.
+
+---
+
+## Before You Begin
+
+TravelShaper needs two things from the outside world: an OpenAI key to think with, and a SerpAPI key to search with. Everything else — the agent, the tools, the UI, the tracing stack — lives inside the project. Getting these keys configured correctly is the single most important step in setup, and the one most likely to cause confusion later if skipped.
+
+### 1. Create your environment file
 
 ```bash
-git clone <your-repo-url>
+cd src
+cp .env.example .env
+```
+
+Open `.env` in any editor and fill in your keys:
+
+```
+OPENAI_API_KEY=sk-...
+SERPAPI_API_KEY=...
+PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+```
+
+**Where to get keys:**
+
+- **OpenAI** (required) — [platform.openai.com/api-keys](https://platform.openai.com/api-keys). The agent cannot function without this.
+- **SerpAPI** (required for flights, hotels, and cultural guide) — [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key). The free tier provides 250 searches per month, which supports roughly 60–125 full trip briefings. Without this key, the agent falls back to DuckDuckGo for everything — functional, but limited.
+- **Phoenix endpoint** — leave the default. It points to the Phoenix container that Docker Compose starts automatically. Only change this if you are running Phoenix on a different host.
+
+The `.env` file is listed in `.gitignore` and will never be committed. If you see an auth error later, this is the first place to check.
+
+---
+
+## Choose How to Run
+
+There are two ways to run TravelShaper. Pick the one that fits your situation — they produce identical results.
+
+### Option A: Docker Compose (recommended)
+
+This is the fastest path. Docker handles Python versions, dependencies, and Phoenix in one command. You do not need a virtual environment.
+
+```bash
 cd src
 ./setup.sh
 ```
 
-This checks prerequisites, configures API keys, and starts the app and Phoenix via Docker Compose.
+The setup script checks prerequisites, prompts for API keys if `.env` does not exist yet, builds the containers, and starts both services. When it finishes:
 
-When it finishes:
+| Service | URL |
+|---------|-----|
+| TravelShaper (app + API) | [http://localhost:8000](http://localhost:8000) |
+| Phoenix (tracing UI) | [http://localhost:6006](http://localhost:6006) |
 
-- **App:** [http://localhost:8000](http://localhost:8000)
-- **Phoenix:** [http://localhost:6006](http://localhost:6006)
-
-Tests run without API keys or Docker:
+To stop everything:
 
 ```bash
+docker compose down
+```
+
+To rebuild after code changes (Docker caches aggressively — this ensures fresh containers):
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Option B: Local virtual environment
+
+Use this if you prefer working outside Docker, want hot-reload during development, or need to debug with local tools. A virtual environment is required — do not install into your system Python.
+
+```bash
+cd src
+python3 -m venv .venv
+source .venv/bin/activate       # macOS / Linux
+# .venv\Scripts\activate        # Windows
+pip install --upgrade pip
+pip install poetry==1.8.2
 poetry install -E dev
+```
+
+Start the server:
+
+```bash
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The app is now running at [http://localhost:8000](http://localhost:8000).
+
+**Phoenix tracing** (optional in venv mode): the Phoenix packages have Python version constraints that conflict with Poetry's resolver. Install them directly with pip after Poetry finishes:
+
+```bash
+pip install arize-phoenix arize-phoenix-evals arize-phoenix-otel \
+            openinference-instrumentation-langchain
+```
+
+You will also need to run the Phoenix server separately. The simplest way is Docker:
+
+```bash
+docker run -p 6006:6006 arizephoenix/phoenix:latest
+```
+
+---
+
+## Running Tests
+
+Here is the thing about the tests that matters most: they are entirely self-contained. All 14 tests use mocked external calls. They do not need API keys, a running server, or Docker. They need only the right Python packages available to import.
+
+The principle is simple: every command that runs Python code should execute inside either a container or an activated virtual environment. Never bare system Python.
+
+### If you are using Docker
+
+```bash
+cd src
+docker compose run --rm test
+```
+
+This spins up a temporary container, installs test dependencies, runs pytest, and removes the container when finished. Your running app and Phoenix are unaffected.
+
+### If you are using a local virtual environment
+
+Run tests in the same venv where you installed dependencies — there is no reason to create a separate one:
+
+```bash
+cd src
+source .venv/bin/activate
 pytest tests/ -v
 ```
 
-For alternative methods (local venv, standalone Docker), see [RUNNING.md](src/RUNNING.md).
+Expected output: **14 tests passing**.
+
+---
 
 ## What It Does
 
@@ -35,28 +143,56 @@ TravelShaper takes a departure city, destination, dates, budget preference, and 
 - **get_cultural_guide** — scoped Google search for etiquette, language, dress code
 - **duckduckgo_search** — open web search for interests and gaps (no key needed)
 
-It synthesizes the results into a single briefing covering getting there, where to stay, cultural prep, and what to do — tailored to your budget mode ("save money" or "full experience") and selected interests.
+It synthesises the results into a single briefing covering getting there, where to stay, cultural prep, and what to do — tailored to your budget mode and selected interests.
 
-The agent runs two distinct voices depending on budget mode. Every recommendation includes a hyperlink and an explanation of *why* it was chosen. The entire request flow is instrumented with Arize Phoenix for observability.
+The agent runs two distinct voices depending on budget mode. "Save money" activates a Bourdain / Billy Dee Williams / Gladwell voice — muscular prose, insider knowledge, budget as philosophy. "Full experience" activates a Robin Leach / Pharrell / Rushdie voice — theatrical, joyful, literary. Both are instructed to include a markdown hyperlink for every named place, hotel, restaurant, and attraction.
 
-## Running Tests
+---
 
-```bash
-poetry run pytest tests/ -v
-```
+## API Endpoints
 
-14 tests, all mocked — no API keys required.
+**`GET /`** — Browser UI. Open [http://localhost:8000](http://localhost:8000) in any browser. No curl required.
 
-CI runs automatically on push and PR — see `.github/workflows/ci.yml`.
-
-## Running Traces + Evaluations
+**`POST /chat`** — Synchronous chat. Returns the full JSON response when the agent finishes. Useful for curl, scripts, and tests.
 
 ```bash
-./run_traces.sh                        # fires 10 queries, generates Phoenix traces
-python -m evaluations.run_evals        # runs 3 evaluation metrics against traces
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Plan a trip from NYC to Rome, September, save money, food and history."}' \
+  | python3 -m json.tool
 ```
 
-See [docs/trace-queries.md](src/docs/trace-queries.md) for query details and [docs/evaluation-prompts.md](src/docs/evaluation-prompts.md) for evaluation methodology.
+**`POST /chat/stream`** — SSE streaming. Same request body as `/chat`. The browser UI uses this to show real-time status updates as each tool executes.
+
+**`GET /health`** — Returns `{"status": "ok"}`. Used by Docker's health check and useful for verifying the server is alive.
+
+---
+
+## Running Traces and Evaluations
+
+Traces are generated by running real queries against the live API. Do this after starting the full Docker Compose stack (or after starting both the app and Phoenix in venv mode).
+
+### Generate traces
+
+```bash
+cd src
+chmod +x run_traces.sh
+./run_traces.sh
+```
+
+This fires 11 queries covering every tool combination, both budget voices, auto-correction, vague inputs, and edge cases. Each query generates a trace visible in Phoenix at [http://localhost:6006](http://localhost:6006).
+
+### Run evaluations
+
+```bash
+python -m evaluations.run_evals
+```
+
+This runs three LLM-as-judge metrics against the collected traces: user frustration (Phoenix built-in template), tool usage correctness, and answer completeness. Results are logged back to Phoenix and visible in the Evaluations tab.
+
+See [docs/trace-queries.md](src/docs/trace-queries.md) for the full query list and [docs/evaluation-prompts.md](src/docs/evaluation-prompts.md) for evaluation methodology.
+
+---
 
 ## Project Structure
 
@@ -95,12 +231,17 @@ src/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml
-├── run_traces.sh                   # 10 trace queries + span export
-├── RUNNING.md                      # Full setup guide (venv, Docker, Phoenix)
+├── run_traces.sh                   # 11 trace queries + span export
+├── setup.sh                        # One-command setup (Docker path)
+├── RUNNING.md                      # Extended setup guide
 └── CHANGELOG.md
 ```
 
+---
+
 ## Architecture
+
+The agent uses a standard LangGraph ReAct loop. The graph topology is unchanged from the starter app — the extension adds tools, not complexity.
 
 ```
 Browser / curl
@@ -130,62 +271,48 @@ Browser / curl
      SSE stream / JSON response → browser / client
 ```
 
-### Tools
+For the full architecture narrative — component design, data flow, LLM decision making, prompt design rationale, deployment topology, and security considerations — see [docs/ARCHITECTURE.md](src/docs/ARCHITECTURE.md).
 
-| Tool | API | What it returns |
-|------|-----|-----------------|
-| `search_flights` | SerpAPI (google_flights engine) | Airlines, prices, durations, layovers, booking links |
-| `search_hotels` | SerpAPI (google_hotels engine) | Hotel names, nightly rates, ratings, amenities, images |
-| `get_cultural_guide` | SerpAPI (google engine, scoped) | Language phrases, etiquette, dress code, local customs |
-| `duckduckgo_search` | DuckDuckGo (no key needed) | General search results for interests and open questions |
-
-For the full architecture narrative, see [docs/ARCHITECTURE.md](src/docs/ARCHITECTURE.md).
-
-## API Endpoints
-
-`GET /` — Browser UI
-
-`POST /chat` — Sync chat, returns full JSON response:
-```bash
-curl -s -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Plan a trip from NYC to Rome, September, save money, food and history."}' \
-  | python3 -m json.tool
-```
-
-`POST /chat/stream` — SSE streaming (used by the browser UI). Same request body as `/chat`.
-
-`GET /health` — Returns `{"status": "ok"}`
-
-Full API contract (request fields, SSE event types, validation errors) in [docs/ARCHITECTURE.md](src/docs/ARCHITECTURE.md).
+---
 
 ## Design Decisions
 
-- **Single HTML file UI** — no npm, no build step; served directly by FastAPI alongside the REST API.
-- **SerpAPI as single data provider** — one key powers flights, hotels, and scoped web searches with structured JSON.
-- **Cultural guide as a first-class tool** — etiquette and language prep adds value beyond price comparison.
-- **DuckDuckGo as fallback** — covers general queries without requiring an additional API key.
-- **Single-turn design** — each request is independent; include all trip details in one submission.
-- **Budget as a lens, not a filter** — affects ranking and tone, not hard cutoffs.
-- **Place validation before agent** — gpt-4o catches misspellings and rejects fake places before the expensive agent runs.
+There is a pattern in how TravelShaper makes its choices, and the pattern is worth naming: every decision optimises for the shortest path to a working demo that is still architecturally honest.
+
+- **Single HTML file UI** — no npm, no build step; served directly by FastAPI alongside the REST API. The constraint produced a better result: one file that loads instantly and has zero deployment friction.
+- **SerpAPI as single data provider** — one key powers flights, hotels, and scoped web searches with structured JSON. The alternative was three separate APIs with three approval processes.
+- **Cultural guide as a first-class tool** — etiquette and language prep is what separates a useful travel briefing from a price comparison. Most travel tools skip this entirely.
+- **DuckDuckGo as fallback** — covers general queries without requiring an additional API key. Already present in the starter code.
+- **Two system prompts, not one** — a single prompt with conditional voice instructions produces blended, inconsistent output. Two separate prompts let the model commit fully to one register.
+- **Place validation before agent** — gpt-4o catches misspellings and rejects fictional places before the expensive agent runs. A 1-second validation call saves 30 seconds of wasted agent time.
+- **Single-turn design** — each request is independent. This is a deliberate product boundary, not a gap.
+
+---
 
 ## Known Limitations
 
 - Planning assistant only — recommends options but does not book.
 - Flight and hotel prices reflect time of search, not guaranteed availability.
 - Cultural guidance is practical advice based on common norms, not absolute rules.
-- Designed for English-speaking American travelers; guidance assumes U.S. norms as baseline.
+- Designed for English-speaking American travellers; guidance assumes U.S. norms as baseline.
 - Single-turn: no conversation memory between requests.
+- SerpAPI free tier supports ~60–125 full briefings per month.
+
+---
 
 ## Troubleshooting
 
-**Server won't start** — Confirm Python 3.11+, venv is active, `.env` exists with valid keys. Run `poetry install -E dev`.
+**Server won't start** — confirm your `.env` exists with valid keys. If running locally, confirm the venv is activated and you have run `poetry install -E dev`. If running Docker, try `docker compose build --no-cache`.
 
-**Auth error** — Check `OPENAI_API_KEY` and `SERPAPI_API_KEY` in `.env`. Verify SerpAPI key at [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key).
+**Auth error from OpenAI or SerpAPI** — check your `.env` file. Verify the SerpAPI key at [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key). Verify the OpenAI key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 
-**Poor or incomplete results** — Include origin, destination, dates, and budget. Check SerpAPI usage (free tier: 250 searches/month). Try well-known destinations first.
+**Tests fail with ModuleNotFoundError** — you are running pytest outside of an isolated environment. Either activate your venv (`source .venv/bin/activate`) or use the Docker test service (`docker compose run --rm test`). Confirm that `pyproject.toml` contains `[tool.pytest.ini_options]` with `pythonpath = ["."]`.
 
-**Missing traces in Phoenix** — Confirm Phoenix is running (`docker-compose up`). Run at least one `/chat` query, then refresh the Phoenix UI at `http://localhost:6006`.
+**Poor or incomplete results** — include origin, destination, dates, and budget in your request. Check SerpAPI usage (free tier: 250 searches/month). Try well-known destinations first.
+
+**Missing traces in Phoenix** — confirm Phoenix is running. If using Docker Compose, both services start together. If using a venv, you need to start Phoenix separately. Run at least one `/chat` query, then refresh the Phoenix UI at [http://localhost:6006](http://localhost:6006).
+
+**`ModuleNotFoundError: No module named 'phoenix'`** — the Phoenix packages are not installed. In venv mode, install them with pip (see the venv setup section above). In Docker mode, they are pre-installed in the container.
 
 ---
 
