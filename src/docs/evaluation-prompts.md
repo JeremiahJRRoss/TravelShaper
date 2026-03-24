@@ -8,7 +8,7 @@ Traditional software testing cannot catch this. You can write a unit test that v
 
 TravelShaper's evaluation pipeline addresses this gap with three LLM-as-judge metrics, each designed to catch a specific category of failure that was observed repeatedly during development. The metrics run against real traces collected in Arize Phoenix and are scored by a separate LLM call (gpt-4o) that reads the user's input and the agent's output and renders a judgment. The results are logged back to Phoenix, where they appear in the Evaluations tab alongside the traces themselves.
 
-This document explains why each metric exists, what it measures, how it produces its output, and what a Solutions Engineering leader should expect to see when reviewing the results.
+This document explains why each metric exists, what it measures, how it produces its output, and what you should expect to see when reviewing the results.
 
 ## How the Pipeline Works
 
@@ -22,7 +22,7 @@ Any traces flagged as frustrated are automatically collected into a `frustrated_
 
 **The problem it catches:** The agent returns a technically correct response, but the user experience is poor. The response might be curt, or dismissive of the user's constraints, or structured in a way that forces the user to do extra work to extract the information they need. During development, early versions of the system prompt produced responses that answered the question but felt robotic — they listed flight options without explaining why one was better than another, or they ignored the user's stated preferences in their recommendations.
 
-**Why this metric matters:** Frustration is the leading indicator that a user will not come back. A response can be factually accurate and still be a product failure if the user feels unheard. For a Solutions Engineering team evaluating this system, frustration scores are the closest proxy to customer satisfaction that an automated pipeline can provide.
+**Why this metric matters:** Frustration is the leading indicator that a user will not come back. A response can be factually accurate and still be a product failure if the user feels unheard. For a team evaluating this system, frustration scores are the closest proxy to customer satisfaction that an automated pipeline can provide.
 
 **How it works:** This metric uses Phoenix's built-in `USER_FRUSTRATION_PROMPT_TEMPLATE` rather than a custom prompt. The built-in template was chosen after testing both options because it proved more consistent across edge cases — particularly for vague queries where the user's intent was ambiguous and a custom prompt tended to over-flag reasonable responses as frustrating.
 
@@ -38,7 +38,7 @@ The local file `evaluations/metrics/frustration.py` exports `USER_FRUSTRATION_PR
 
 This was the most common failure mode during development. The LLM has access to four tools and must decide which subset to call based on the user's natural language message. That decision is where most things go wrong — and it is invisible to the user, who sees only the final response and has no way of knowing whether the agent called one tool or four.
 
-**Why this metric matters:** For a Solutions Engineering team, tool correctness is a direct measure of system efficiency. Every unnecessary tool call consumes API quota (SerpAPI charges per search) and adds latency (each tool call takes 2–5 seconds). Every missed tool call produces an incomplete response that the user will notice. This metric tells you whether the agent's reasoning about tool selection is sound.
+**Why this metric matters:** For a team, tool correctness is a direct measure of system efficiency. Every unnecessary tool call consumes API quota (SerpAPI charges per search) and adds latency (each tool call takes 2–5 seconds). Every missed tool call produces an incomplete response that the user will notice. This metric tells you whether the agent's reasoning about tool selection is sound.
 
 **How it works:** The `TOOL_CORRECTNESS_PROMPT` is a custom LLM-as-judge prompt defined in `evaluations/metrics/tool_correctness.py`. It receives the user's message and the agent's response, and evaluates whether the tools that were called (visible in the trace data) match what the user's request required.
 
@@ -54,7 +54,7 @@ The prompt is designed to understand the relationship between request content an
 
 This sounds like a simple problem, but it has a subtle wrinkle that makes naive completeness checks misleading: sometimes the agent is *intentionally* incomplete. If a user asks "just show me flights, I have hotels sorted," a complete response should contain only flight information. A naive completeness metric would flag that as incomplete because it lacks hotel data. This is why the metric needs scope awareness.
 
-**Why this metric matters:** Completeness is the quality dimension that most directly affects whether the user accomplishes their goal. A frustrated user might still get what they need; an incomplete response guarantees they do not. For Solutions Engineering leaders evaluating the system for a customer-facing deployment, completeness scores answer the question: "If I hand this to a user, will they get what they asked for?"
+**Why this metric matters:** Completeness is the quality dimension that most directly affects whether the user accomplishes their goal. A frustrated user might still get what they need; an incomplete response guarantees they do not. For those of you evaluating the system for a customer-facing deployment, completeness scores answer the question: "If I hand this to a user, will they get what they asked for?"
 
 **How it works:** The `ANSWER_COMPLETENESS_PROMPT` is a custom LLM-as-judge prompt defined in `evaluations/metrics/answer_completeness.py`. Its distinguishing feature is scope awareness. The prompt instructs the classifier to first determine what the user actually asked for — not what a "full" response would contain, but what *this particular user* requested — and then evaluate whether the response covered each requested element.
 
@@ -74,4 +74,4 @@ A trace that scores correct on tools but incomplete on answers tells you the LLM
 
 A trace that scores incorrect on tools will almost always also score incomplete on answers, because missing tool calls produce missing data. The tool correctness flag identifies the root cause; the completeness flag shows the user-facing consequence.
 
-For a Solutions Engineering leader reviewing evaluation results before a customer deployment, the summary view in Phoenix's Evaluations tab provides the fastest read: what percentage of interactions pass all three metrics, and for the ones that fail, which metric fails most often. That single distribution tells you where to invest your next round of prompt engineering.
+For a team reviewing evaluation results before a customer deployment, the summary view in Phoenix's Evaluations tab provides the fastest read: what percentage of interactions pass all three metrics, and for the ones that fail, which metric fails most often. That single distribution tells you where to invest your next round of prompt engineering.
