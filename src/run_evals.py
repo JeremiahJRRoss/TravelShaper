@@ -69,7 +69,7 @@ PHOENIX_URL = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:600
 PHOENIX_BASE = PHOENIX_URL.replace("/v1/traces", "")
 
 EVAL_MODEL = "gpt-4o"
-PROJECT_NAME = "default"  # Phoenix project name where traces live
+PROJECT_NAME = "travelshaper"  # Phoenix project name where traces live
 
 
 # ── Heartbeat timer ──────────────────────────────────────────
