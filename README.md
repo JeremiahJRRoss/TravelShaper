@@ -27,20 +27,26 @@ docker compose up -d --build
 
 When it finishes, the app is at [http://localhost:8000](http://localhost:8000) and Phoenix is at [http://localhost:6006](http://localhost:6006). Verify with `docker ps` — you should see two containers running.
 
-**Step 3. Run tests and generate traces.**
+**Step 3. Run tests and generate traces.** In a separate terminal, set up a virtual environment and run the tests locally (see "Running Tests" below for full details on each platform):
 
 ```
-docker compose exec travelshaper pytest tests/ -v
-```
-
-Tests run inside the container (mocked, no API keys consumed). To generate traces, run the trace script locally from the `src/` directory:
-
-```
+cd src
+python3 -m venv .venv
 source .venv/bin/activate
+pip install --upgrade pip
+pip install poetry==1.8.2
+poetry install -E dev
+pip install openai
+pytest tests/ -v
+```
+
+All 14 tests are mocked and consume no API keys. To generate traces, run the trace script from the same venv:
+
+```
 python run_traces.py
 ```
 
-This fires 11 real queries against the agent. Open [http://localhost:6006](http://localhost:6006) to see the traces in Phoenix.
+This fires 11 real queries against the agent and saves the results to a timestamped JSON file. Open [http://localhost:6006](http://localhost:6006) to see the traces in Phoenix.
 
 For detailed setup options (including running without Docker), see the sections below.
 
@@ -327,37 +333,92 @@ The `-d` flag runs Phoenix detached. Traces will appear at [http://localhost:600
 
 ## Running Tests
 
-All 14 tests are entirely self-contained. They use mocked external calls, need no API keys, no running server, and no Docker. They need only the right Python packages available to import. The commands below work identically on Windows, macOS, and Linux.
+All 14 tests are entirely self-contained. Every external call — OpenAI, SerpAPI, DuckDuckGo — is mocked with `unittest.mock.patch`. The tests do not need API keys, a running server, a network connection, or Docker. They need only the right Python packages available to import, which means they run fastest and most naturally from a local virtual environment.
 
-### Using Docker (recommended — works on all platforms)
+### Setting up the virtual environment
 
-This is the most reliable path because the container has every dependency pre-installed. The container must be running first:
+If you already have a working venv from the "Option C: Local virtual environment" setup section above, you can skip straight to "Running the tests" below. If you have been using Docker exclusively and don't have a venv yet, follow these steps to create one. You only need to do this once.
 
-```
-docker compose exec travelshaper pytest tests/ -v
-```
+The virtual environment lives inside the `src/` directory at `src/.venv/`. This location matters because all the project imports (like `from tools.flights import search_flights`) assume `src/` is the Python root. The `.venv/` directory is listed in `.gitignore` and will not be committed.
 
-If the container is not already running, start it first with `docker compose up -d`, then run the command above.
-
-### Using a local virtual environment
-
-Run tests in the same venv where you installed dependencies. On macOS or Linux:
+**Step 1.** Navigate into the `src/` directory. All subsequent commands assume you are here:
 
 ```
 cd src
-source .venv/bin/activate
-pytest tests/ -v
+```
+
+**Step 2.** Create the virtual environment. This produces a `.venv/` directory containing an isolated copy of Python and pip, separate from your system Python and any other Python distributions (like Anaconda) on your machine:
+
+On macOS or Linux:
+
+```
+python3 -m venv .venv
 ```
 
 On Windows:
 
 ```
-cd src
-.venv\Scripts\activate
+python -m venv .venv
+```
+
+The difference is the command name: macOS and Linux typically install Python 3 as `python3`, while the Windows Python installer registers it as `python`. If `python3` does not work on your machine, try `python --version` to confirm it reports 3.11 or higher, then use `python` everywhere below where you see `python3`.
+
+**Step 3.** Activate the virtual environment. This changes your shell so that `python` and `pip` point to the copies inside `.venv/` rather than your system Python:
+
+On macOS or Linux (bash, zsh):
+
+```
+source .venv/bin/activate
+```
+
+On Windows (Command Prompt):
+
+```
+.venv\Scripts\activate.bat
+```
+
+On Windows (PowerShell):
+
+```
+.venv\Scripts\Activate.ps1
+```
+
+Your terminal prompt should now show `(.venv)` at the beginning of the line. This tells you the venv is active. If you open a new terminal window or tab, you will need to activate it again — the activation only applies to the current shell session.
+
+**Step 4.** Install pip and Poetry inside the venv:
+
+```
+pip install --upgrade pip
+pip install poetry==1.8.2
+```
+
+**Step 5.** Install project dependencies. The `-E dev` flag tells Poetry to include the `dev` extras group, which brings in `pytest` and `httpx` (the async HTTP client that FastAPI's test client uses). Without this flag, you will have the project code but not the tools needed to test it:
+
+```
+poetry install -E dev
+```
+
+**Step 6.** Install the OpenAI SDK. This is required because `api.py` imports it for the place and preference validation classifiers. It is not declared in `pyproject.toml` (it is installed via pip in the Dockerfile for the Docker path), so you must install it separately:
+
+```
+pip install openai
+```
+
+The venv is now ready. You do not need to repeat these steps unless you delete the `.venv/` directory or want to start fresh.
+
+### Running the tests
+
+Make sure you are in the `src/` directory and the venv is active (you should see `(.venv)` in your prompt). Then run:
+
+```
 pytest tests/ -v
 ```
 
-Expected output for both paths: **14 tests passing**.
+The `-v` flag enables verbose output, which prints each test name and its pass/fail status on a separate line. Expected output: **14 tests passing** across three test files (`test_tools.py`, `test_agent.py`, `test_api.py`).
+
+This command is identical on macOS, Linux, and Windows — once the venv is active, `pytest` resolves the same way on all platforms.
+
+If you see `ModuleNotFoundError` when running tests, it almost always means one of two things: either the venv is not activated (check for `(.venv)` in your prompt), or the `-E dev` flag was omitted during `poetry install` (run `poetry install -E dev` to fix it). If the missing module is `openai`, run `pip install openai`. The `pyproject.toml` file includes `[tool.pytest.ini_options]` with `pythonpath = ["."]`, which tells pytest to add the current directory to the Python path — this is why tests must be run from inside `src/`.
 
 ---
 
@@ -614,35 +675,19 @@ You can optionally pass a custom base URL as an argument:
 python run_traces.py http://localhost:8000
 ```
 
-The script outputs a preview of each response as it runs. When all 11 queries finish, open [http://localhost:6006](http://localhost:6006) to see the traces in Phoenix.
+The script outputs a preview of each response as it runs, then saves all query inputs and responses to a timestamped JSON file (e.g. `trace-results_2026-03-23_14-05-32.json`). This file contains the request body, expected tools, response text, and status for each of the 11 queries — useful for reviewing results offline or comparing across runs.
 
 A legacy bash script (`run_traces.sh`) is also included in the repository. It does the same thing but requires bash and has had compatibility issues on macOS (BSD `date` vs GNU `date`). The Python script is the recommended path for all platforms.
 
-### Export traces to CSV
-
-The export step uses Phoenix packages (pandas, arize-phoenix) that are installed inside the Docker container but not in your local venv. Run the export inside the container:
-
-```
-docker compose exec travelshaper python -m scripts.export_spans
-```
-
-This writes `spans_export.csv` to the container's filesystem. To copy it to your local machine:
-
-```
-docker compose cp travelshaper:/app/spans_export.csv ./spans_export.csv
-```
-
 ### Run evaluations
 
-Evaluations also require Phoenix packages and must run inside the container:
-
-```
-docker compose exec travelshaper python -m evaluations.run_evals
-```
-
-This runs three LLM-as-judge metrics against the collected traces:
+The evaluation pipeline runs three LLM-as-judge metrics against the collected traces:
 
 User Frustration uses Phoenix's built-in `USER_FRUSTRATION_PROMPT_TEMPLATE` (the `frustration.py` file in `evaluations/metrics/` contains a custom reference prompt but it is not used in production). Tool Usage Correctness and Answer Completeness are custom LLM-as-judge prompts with scope awareness — the completeness metric distinguishes between intentionally scoped responses (user asked for flights only) and unintentionally incomplete ones (agent failed to search hotels).
+
+```
+python -m evaluations.run_evals
+```
 
 Results are logged back to Phoenix and visible in the Evaluations tab. A `frustrated_interactions` dataset is automatically created from any traces flagged as frustrated.
 
@@ -687,7 +732,7 @@ src/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml
-├── run_traces.py                   # 11 trace queries (cross-platform, recommended)
+├── run_traces.py                   # 11 trace queries + JSON results (cross-platform, recommended)
 ├── run_traces.sh                   # 11 trace queries + CSV export (bash, legacy)
 ├── setup.sh                        # One-command setup (Docker path, macOS/Linux only)
 ├── RUNNING.md                      # Extended setup guide (some sections outdated — prefer this README)
@@ -899,7 +944,7 @@ docker compose up -d
 
 **`ModuleNotFoundError: No module named 'openai'`** — the `openai` SDK is not in `pyproject.toml`. In venv mode, install it with `pip install openai`. In Docker mode, it is pre-installed in the container via the Dockerfile.
 
-**Tests fail with ModuleNotFoundError** — you are running pytest outside of an isolated environment. Either activate your venv (`source .venv/bin/activate`) or run tests inside the Docker container (`docker compose exec travelshaper pytest tests/ -v`). Confirm that `pyproject.toml` contains `[tool.pytest.ini_options]` with `pythonpath = ["."]`.
+**Tests fail with ModuleNotFoundError** — the most common cause is running pytest outside the virtual environment. Check that you see `(.venv)` in your terminal prompt. If not, activate the venv with `source .venv/bin/activate` (macOS/Linux) or `.venv\Scripts\activate.bat` (Windows). If the missing module is `pytest` or `httpx`, you need to install dev dependencies: `poetry install -E dev`. If the missing module is `openai`, run `pip install openai`. Make sure you are running pytest from inside the `src/` directory — the `pyproject.toml` setting `pythonpath = ["."]` tells pytest to resolve imports relative to the current directory.
 
 **Poor or incomplete results** — include origin, destination, dates, and budget in your request. Check SerpAPI usage (free tier: 250 searches/month). Try well-known destinations first.
 
@@ -907,13 +952,13 @@ docker compose up -d
 
 **`ModuleNotFoundError: No module named 'phoenix'`** — the Phoenix packages are not installed. In venv mode, install them with pip (see the venv setup section above). In Docker mode, they are pre-installed in the container.
 
-**`run_traces.py` fails with `ConnectionError`** — the TravelShaper server is not running. Start the Docker stack with `docker compose up -d` and wait for the health check to pass (`curl http://localhost:8000/health`), then run the script again. The script runs locally but sends requests to the server inside Docker at `localhost:8000`.
+**`run_traces.py` fails with `ConnectionError`** — the TravelShaper server is not running. Start the Docker stack with `docker compose up -d` and wait for the health check to pass (`curl http://localhost:8000/health`), then run the script again.
 
-**Trace export or evaluations fail locally** — the export script (`scripts.export_spans`) and evaluation runner (`evaluations.run_evals`) require Phoenix packages (pandas, arize-phoenix) that are not in your local venv. Run them inside the Docker container instead: `docker compose exec travelshaper python -m scripts.export_spans` and `docker compose exec travelshaper python -m evaluations.run_evals`. The trace queries themselves (run_traces.py) work locally because they only use the `requests` library.
+**`run_traces.py` saves a JSON file but some queries show errors** — open the JSON file and check the `status` and `error` fields for each result. Common causes: an expired or missing SerpAPI key (the agent falls back to DuckDuckGo but may produce incomplete results), or an expired OpenAI key (all queries will fail). Check your `.env` file inside `src/`.
 
 **`run_traces.sh` fails with `date: illegal option -- d`** — you are running the legacy bash script on macOS, which uses BSD `date` instead of GNU `date`. Use `run_traces.py` instead, which handles dates with Python's `datetime` module and works on all platforms. If you prefer the bash script, the current version in the repository detects your platform automatically — replace your copy with the latest version.
 
-**`run_traces.sh` fails with import errors** — the bash script calls `python3 -m scripts.export_spans` at the end, which requires Phoenix packages that aren't in your local venv. Use `run_traces.py` instead — it only uses the `requests` library and skips the export step. To export traces separately, run the export inside the container: `docker compose exec travelshaper python -m scripts.export_spans`.
+**`run_traces.sh` fails with import errors** — the bash script calls `python3 -m scripts.export_spans` at the end, which requires Phoenix packages that aren't in your local venv. Use `run_traces.py` instead — it saves results to a local JSON file using only the `requests` library.
 
 ---
 
