@@ -160,8 +160,6 @@ To fetch traces:
 curl -s http://localhost:6006/v1/traces?limit=5 | python3 -m json.tool
 ```
 
-If you prefer to work with trace data offline, `run_traces.py` saves every query's input and response to a timestamped JSON file in the `src/` directory.
-
 ---
 
 ## Set Up Python for Traces and Evaluations
@@ -236,6 +234,8 @@ On Windows: `cd src` then `.venv\Scripts\activate.bat` or `.venv\Scripts\Activat
 This is the core observability workflow: generate traces by sending real queries to the agent, then score those traces with three LLM-as-judge metrics. Both scripts run from the same venv in the same terminal session.
 
 Make sure you are in the `src/` directory with the venv active and the Docker stack is running.
+
+If you prefer to work with trace data offline, `run_traces.py` run traces and save each query's input and response to a timestamped JSON file in the `src/` directory.
 
 ### Generate traces
 
