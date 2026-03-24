@@ -1,335 +1,77 @@
-# Evaluation Prompts — TravelShaper Travel Assistant
+# Evaluation Methodology
 
-**These are the exact prompts to use in the Phoenix evaluation pipeline.**
+## The Problem That Evaluation Solves
 
----
+There is a particular failure mode that plagues AI-powered tools, and it is worth understanding before looking at any metrics. The failure is silent. The system returns a response. The response looks reasonable. No error was thrown, no timeout occurred, no tool crashed. And yet the user walks away unsatisfied — because the answer was incomplete, or the wrong tools were called, or the tone made them feel like the system didn't understand what they asked for.
 
-## Why These Metrics
+Traditional software testing cannot catch this. You can write a unit test that verifies the flight search tool returns valid JSON, and it will pass every time, and it will tell you nothing about whether the agent chose to call the flight search tool when the user asked for flights. The gap between "the system works" and "the system works well" is where evaluation lives.
 
-The three evaluation metrics weren't chosen from a generic checklist — they target specific failure modes observed during development and trace analysis. Each metric exists because the system failed in a particular way that needed a dedicated detector.
+TravelShaper's evaluation pipeline addresses this gap with three LLM-as-judge metrics, each designed to catch a specific category of failure that was observed repeatedly during development. The metrics run against real traces collected in Arize Phoenix and are scored by a separate LLM call (gpt-4o) that reads the user's input and the agent's output and renders a judgment. The results are logged back to Phoenix, where they appear in the Evaluations tab alongside the traces themselves.
 
-### User Frustration — chosen because of silent tool failures
+This document explains why each metric exists, what it measures, how it produces its output, and what a Solutions Engineering leader should expect to see when reviewing the results.
 
-When a SerpAPI call returns empty results (thin coverage for a niche destination, rate limit hit, or timeout), the agent doesn't crash — it receives a "No flights found" string from the tool. The LLM then has to decide what to do with that gap. In some cases, the agent produces a response that simply omits the missing section without acknowledging it. The user asked for flights and hotels but only got hotels — and the response doesn't say why.
+## How the Pipeline Works
 
-A second failure mode: the agent occasionally ignores the user's budget preference. The system prompt instructs it to set `sort_by=3` for budget travelers, but on some runs the LLM passes `sort_by=13` anyway (or doesn't pass it at all, defaulting to highest rating). The user asked to save money and got luxury hotel recommendations. The response is coherent but wrong for the user's stated needs.
+The evaluation runner (`evaluations/run_evals.py`) connects to Phoenix, pulls the most recent traces, and passes each one through three classification prompts using Phoenix's `llm_classify` function. Each prompt receives the user's original message and the agent's full response. The classifier returns a label and an explanation for each trace.
 
-The user frustration evaluator catches both patterns — responses that omit requested information and responses that contradict the user's stated preferences. Using Phoenix's built-in `USER_FRUSTRATION_PROMPT_TEMPLATE` rather than a custom prompt was a deliberate choice: it's validated against real conversational patterns and checks for the exact signals these failures produce (incomplete answers, ignored requests).
+Results are written back to Phoenix as evaluation annotations on the original traces. This means you can open any trace in the Phoenix UI, see the agent's tool calls and response, and immediately see how all three metrics scored that interaction — without switching tools or cross-referencing spreadsheets.
 
-### Tool Usage Correctness — chosen because of IATA code and parameter errors
+Any traces flagged as frustrated are automatically collected into a `frustrated_interactions` dataset within Phoenix, creating a ready-made queue for human review.
 
-The most common tool-level failure is incorrect airport codes. The system prompt includes guidance to convert city names to IATA codes, but the LLM sometimes passes "San Francisco" instead of "SFO", or invents plausible-but-wrong codes for smaller airports. SerpAPI returns empty results, and the agent moves on without flights — a silent failure that cascades into an incomplete briefing.
+## Metric 1: User Frustration
 
-A second failure mode: the agent occasionally skips `get_cultural_guide` for international destinations, particularly when the user's message is heavily focused on flights or hotels. The system prompt says "always use for international destinations" but the LLM deprioritizes it when the message is logistics-heavy.
+**The problem it catches:** The agent returns a technically correct response, but the user experience is poor. The response might be curt, or dismissive of the user's constraints, or structured in a way that forces the user to do extra work to extract the information they need. During development, early versions of the system prompt produced responses that answered the question but felt robotic — they listed flight options without explaining why one was better than another, or they ignored the user's stated preferences in their recommendations.
 
-A third failure mode: unnecessary tool calls. On vague queries like "I need a break, surprise me" (Query 9 in the trace set), the agent sometimes calls `search_flights` without having a destination — passing empty or hallucinated airport codes. This wastes a SerpAPI call and returns garbage data.
+**Why this metric matters:** Frustration is the leading indicator that a user will not come back. A response can be factually accurate and still be a product failure if the user feels unheard. For a Solutions Engineering team evaluating this system, frustration scores are the closest proxy to customer satisfaction that an automated pipeline can provide.
 
-The tool correctness evaluator checks all three dimensions — were the right tools called, were necessary tools missed, and were parameters valid. The prompt explicitly names the four available tools and asks the judge to evaluate selection, completeness, and parameter validity against the user's actual request.
+**How it works:** This metric uses Phoenix's built-in `USER_FRUSTRATION_PROMPT_TEMPLATE` rather than a custom prompt. The built-in template was chosen after testing both options because it proved more consistent across edge cases — particularly for vague queries where the user's intent was ambiguous and a custom prompt tended to over-flag reasonable responses as frustrating.
 
-### Answer Completeness — chosen because of partial briefings on scoped requests
+The local file `evaluations/metrics/frustration.py` exports `USER_FRUSTRATION_PROMPT_CUSTOM`, a reference implementation that was used during development and is preserved in the codebase for comparison. It is not used in the production evaluation pipeline.
 
-TravelShaper's 10 trace queries deliberately include scoped requests — "flights only" (Query 6), "hotels only" (Query 7), "I'm already here, no transport needed" (Query 5). Early in development, the frustration evaluator flagged these as frustrated because they were "missing" sections. But they're not incomplete — the user explicitly asked for a subset. The frustration metric couldn't distinguish "missing because the agent failed" from "missing because the user didn't ask for it."
+**Expected output:** Each trace is labeled as frustrated or not frustrated, with an explanation. A healthy run against the 11 trace queries should produce zero or one frustrated interactions. If you see three or more, something has changed in the system prompt or model behavior that warrants investigation.
 
-This created a need for a separate completeness metric with scope awareness. The answer completeness evaluator uses a three-tier classification (complete / partial / incomplete) and its prompt explicitly handles scoped requests: "Do NOT penalise for missing sections the user explicitly excluded or did not request." This means Query 6 (flights only) can score "complete" even though it has no hotel section, while a full trip request that's missing hotels scores "incomplete."
+**What to do with the results:** Open the `frustrated_interactions` dataset in Phoenix. Read the explanations. The classifier's reasoning often pinpoints the exact sentence or omission that triggered the flag — "the response listed hotels but did not address the user's stated dietary restriction" or "the agent used a dismissive tone when the user asked a vague question." These explanations are the fastest path to identifying which part of the system prompt needs adjustment.
 
-Together with frustration, completeness gives two complementary views — frustration measures the user's likely emotional response, completeness measures whether the response structurally matched the request. A response can be complete but frustrating (all sections present but budget preference ignored) or incomplete but not frustrating (missing one section but the response acknowledges the gap gracefully).
+## Metric 2: Tool Usage Correctness
 
----
+**The problem it catches:** The agent calls the wrong tools, or fails to call the right ones. A user asks for flights and hotels, and the agent searches for flights but skips the hotel search. A user says they are already at their destination and do not need transport, and the agent searches for flights anyway, wasting time and SerpAPI quota.
 
-## Evaluation 1: User Frustration
+This was the most common failure mode during development. The LLM has access to four tools and must decide which subset to call based on the user's natural language message. That decision is where most things go wrong — and it is invisible to the user, who sees only the final response and has no way of knowing whether the agent called one tool or four.
 
-### Purpose
-Detect traces where the agent's response would likely frustrate the user: incomplete answers, ignored requests, hallucinated details, or unhelpful responses.
+**Why this metric matters:** For a Solutions Engineering team, tool correctness is a direct measure of system efficiency. Every unnecessary tool call consumes API quota (SerpAPI charges per search) and adds latency (each tool call takes 2–5 seconds). Every missed tool call produces an incomplete response that the user will notice. This metric tells you whether the agent's reasoning about tool selection is sound.
 
-### LLM-as-judge prompt
+**How it works:** The `TOOL_CORRECTNESS_PROMPT` is a custom LLM-as-judge prompt defined in `evaluations/metrics/tool_correctness.py`. It receives the user's message and the agent's response, and evaluates whether the tools that were called (visible in the trace data) match what the user's request required.
 
-```python
-USER_FRUSTRATION_PROMPT = """\
-You are evaluating an AI travel assistant's response for signs of user frustration.
+The prompt is designed to understand the relationship between request content and tool applicability: a message with departure city, destination, and dates should trigger flight and hotel searches; a message that says "I am already there" should not trigger flights; a domestic U.S. trip should not trigger the cultural guide (which is designed for international travel).
 
-Given the user's message and the assistant's response, determine whether the user \
-would likely be frustrated with the response.
+**Expected output:** Each trace is labeled as correct or incorrect tool usage, with an explanation of what was expected versus what occurred. Against the 11 trace queries — which were specifically designed to cover every tool combination including single-tool, no-tool, and all-tool scenarios — a correct implementation should score 11 out of 11. A score below 10 indicates a regression in the agent's tool selection reasoning.
 
-A response IS frustrating if any of the following are true:
-- The user asked about flights but the response contains no flight information
-- The user asked about hotels but the response contains no hotel information
-- The user asked about a specific destination but the response is generic and not destination-specific
-- The response says "I cannot help with that" or refuses to act when the request is reasonable
-- The response contains obviously fabricated specifics (fake hotel names, made-up prices) not from tool results
-- The response ignores a key part of the user's request (e.g., user asked for budget options but got luxury only)
-- The response is extremely short or vague when the user asked a detailed question
+**What to do with the results:** If a trace is flagged as incorrect, open it in Phoenix and inspect the tool call chain. Look at what tools were called and what arguments were passed. The most common root cause is that the system prompt's tool usage instructions are too vague for a particular edge case — for example, the agent may not understand that a user who says "I don't need flights" means they should skip the flight search entirely, not search for flights and then mention they weren't needed.
 
-A response is NOT frustrating if:
-- It provides useful partial information and acknowledges what it couldn't find
-- It addresses the main request even if some details are missing
-- It asks a reasonable clarifying question when the input is truly ambiguous
+## Metric 3: Answer Completeness
 
-User message: {input}
+**The problem it catches:** The agent's response is missing information that the user asked for. The user requested flights, hotels, cultural prep, and restaurant recommendations, but the response only covers flights and hotels. Or the user asked about photography spots in Lisbon and the response talks about food instead.
 
-Assistant response: {output}
+This sounds like a simple problem, but it has a subtle wrinkle that makes naive completeness checks misleading: sometimes the agent is *intentionally* incomplete. If a user asks "just show me flights, I have hotels sorted," a complete response should contain only flight information. A naive completeness metric would flag that as incomplete because it lacks hotel data. This is why the metric needs scope awareness.
 
-Tool calls made: {tool_calls}
+**Why this metric matters:** Completeness is the quality dimension that most directly affects whether the user accomplishes their goal. A frustrated user might still get what they need; an incomplete response guarantees they do not. For Solutions Engineering leaders evaluating the system for a customer-facing deployment, completeness scores answer the question: "If I hand this to a user, will they get what they asked for?"
 
-Respond with ONLY a JSON object:
-{{
-  "label": "frustrated" or "not_frustrated",
-  "score": 0 or 1,
-  "explanation": "One sentence explaining your judgment."
-}}
-"""
-```
+**How it works:** The `ANSWER_COMPLETENESS_PROMPT` is a custom LLM-as-judge prompt defined in `evaluations/metrics/answer_completeness.py`. Its distinguishing feature is scope awareness. The prompt instructs the classifier to first determine what the user actually asked for — not what a "full" response would contain, but what *this particular user* requested — and then evaluate whether the response covered each requested element.
 
-### Implementation
+A response that covers flights, hotels, cultural prep, and dining recommendations is complete for a full-trip query. The same response would be overcomplete (but not penalized) for a flights-only query. A flights-only response is complete for a flights-only query but incomplete for a full-trip query. The metric distinguishes between these cases.
 
-```python
-from phoenix.evals import llm_classify, OpenAIModel
+**Expected output:** Each trace is labeled as complete or incomplete, with an explanation that references the specific elements the user requested and whether each was addressed. Against the 11 trace queries, which include both full-scope and deliberately scoped requests, a correct implementation should score 11 out of 11. An incomplete flag on a scoped query (like the flights-only or cultural-guide-only test) indicates a defect in the prompt's scope detection logic.
 
-# Define the evaluation model
-eval_model = OpenAIModel(model="gpt-4o", temperature=0)
+**What to do with the results:** If a trace is flagged as incomplete, the explanation will identify which requested element was missing. Cross-reference this with the tool correctness score for the same trace. If the tools were called correctly but the response is incomplete, the problem is in the synthesis step — the agent had the data but failed to include it in the final briefing. If the tools were not called correctly, the incompleteness is downstream of a tool selection failure. The fix depends on which stage failed.
 
-# Run evaluation on spans dataframe
-frustration_results = llm_classify(
-    dataframe=spans_df,
-    template=USER_FRUSTRATION_PROMPT,
-    model=eval_model,
-    rails=["frustrated", "not_frustrated"],
-    provide_explanation=True,
-)
-```
+## Reading the Results Together
 
-### Expected distribution
-With well-crafted queries (see trace-queries.md):
-- Queries 1-3, 6-8, 10: should be "not_frustrated" (clear requests with tool results)
-- Query 4: could be either (no flights/hotels, but cultural info is provided)
-- Query 5: should be "not_frustrated" (interest-based, web search handles it)
-- Query 9: most likely "not_frustrated" if agent gives destination suggestions, "frustrated" if it refuses
-
----
+No single metric tells the full story. The value of running all three is in the intersections.
 
-## Evaluation 2: Tool Usage Correctness
-
-### Purpose
-Assess whether the agent selected appropriate tools for the user's request and passed valid parameters.
+A trace that scores correct on tools, complete on answers, but frustrated on experience tells you the system is mechanically sound but tonally off — the system prompt needs voice tuning, not tool logic changes.
 
-### LLM-as-judge prompt
+A trace that scores correct on tools but incomplete on answers tells you the LLM is gathering the right data but dropping information during synthesis — the system prompt's structural instructions (section headings, required elements) may need reinforcement.
 
-```python
-TOOL_CORRECTNESS_PROMPT = """\
-You are evaluating whether an AI travel assistant used its tools correctly.
-
-The assistant has access to these tools:
-- search_flights: Search for flights. Requires departure airport code, arrival airport code, and dates.
-- search_hotels: Search for hotels. Requires a destination query and dates.
-- get_cultural_guide: Get etiquette, language, and dress guidance for a destination.
-- duckduckgo_search: General web search for interests, events, activities, and fallback queries.
+A trace that scores incorrect on tools will almost always also score incomplete on answers, because missing tool calls produce missing data. The tool correctness flag identifies the root cause; the completeness flag shows the user-facing consequence.
 
-Given the user's message and the tools that were called, evaluate:
-
-1. Were the RIGHT tools called? (Did the agent search flights when the user asked about flights?)
-2. Were any NECESSARY tools missed? (Did the agent skip cultural guide for an international trip?)
-3. Were tool PARAMETERS valid? (Did the agent pass proper airport codes, not city names? Were dates in YYYY-MM-DD format?)
-4. Were any UNNECESSARY tools called? (Did the agent search flights when the user only asked about food?)
-
-User message: {input}
-
-Tools called and their inputs:
-{tool_calls}
-
-Respond with ONLY a JSON object:
-{{
-  "label": "correct" or "incorrect",
-  "score": 0 or 1,
-  "explanation": "One sentence explaining your judgment. Mention specific tools that were correctly used, missed, or misused."
-}}
-"""
-```
-
-### Implementation
-
-```python
-tool_correctness_results = llm_classify(
-    dataframe=spans_df,
-    template=TOOL_CORRECTNESS_PROMPT,
-    model=eval_model,
-    rails=["correct", "incorrect"],
-    provide_explanation=True,
-)
-```
-
-### Expected distribution
-- Most queries should be "correct" if the system prompt is well-crafted
-- Common failure modes to look for:
-  - Agent passes "San Francisco" instead of "SFO" to search_flights
-  - Agent skips get_cultural_guide for international destinations
-  - Agent calls search_flights when user only asked about cultural info
-  - Agent passes malformed dates
-
----
-
-## Integration: evaluations/run_evals.py
-
-The run_evals.py script imports prompts from the metrics modules. This matches the project structure in the README.
-
-**evaluations/metrics/frustration.py:**
-```python
-"""User frustration evaluation metric."""
-
-USER_FRUSTRATION_PROMPT = """\
-You are evaluating an AI travel assistant's response for signs of user frustration.
-
-Given the user's message and the assistant's response, determine whether the user \
-would likely be frustrated with the response.
-
-A response IS frustrating if any of the following are true:
-- The user asked about flights but the response contains no flight information
-- The user asked about hotels but the response contains no hotel information
-- The user asked about a specific destination but the response is generic and not destination-specific
-- The response says "I cannot help with that" or refuses to act when the request is reasonable
-- The response contains obviously fabricated specifics (fake hotel names, made-up prices) not from tool results
-- The response ignores a key part of the user's request (e.g., user asked for budget options but got luxury only)
-- The response is extremely short or vague when the user asked a detailed question
-
-A response is NOT frustrating if:
-- It provides useful partial information and acknowledges what it couldn't find
-- It addresses the main request even if some details are missing
-- It asks a reasonable clarifying question when the input is truly ambiguous
-
-User message: {input}
-
-Assistant response: {output}
-
-Tool calls made: {tool_calls}
-
-Respond with ONLY a JSON object:
-{{"label": "frustrated" or "not_frustrated", "score": 0 or 1, "explanation": "One sentence explaining your judgment."}}
-"""
-```
-
-**evaluations/metrics/tool_correctness.py:**
-```python
-"""Tool usage correctness evaluation metric."""
-
-TOOL_CORRECTNESS_PROMPT = """\
-You are evaluating whether an AI travel assistant used its tools correctly.
-
-The assistant has access to these tools:
-- search_flights: Search for flights. Requires departure airport code, arrival airport code, and dates.
-- search_hotels: Search for hotels. Requires a destination query and dates.
-- get_cultural_guide: Get etiquette, language, and dress guidance for a destination.
-- duckduckgo_search: General web search for interests, events, activities, and fallback queries.
-
-Given the user's message and the tools that were called, evaluate:
-
-1. Were the RIGHT tools called? (Did the agent search flights when the user asked about flights?)
-2. Were any NECESSARY tools missed? (Did the agent skip cultural guide for an international trip?)
-3. Were tool PARAMETERS valid? (Did the agent pass proper airport codes, not city names? Were dates in YYYY-MM-DD format?)
-4. Were any UNNECESSARY tools called? (Did the agent search flights when the user only asked about food?)
-
-User message: {input}
-
-Tools called and their inputs:
-{tool_calls}
-
-Respond with ONLY a JSON object:
-{{"label": "correct" or "incorrect", "score": 0 or 1, "explanation": "One sentence explaining your judgment. Mention specific tools that were correctly used, missed, or misused."}}
-"""
-```
-
-**evaluations/run_evals.py:**
-```python
-"""Run Phoenix evaluations on captured TravelShaper traces."""
-
-import phoenix as px
-from phoenix.evals import llm_classify, OpenAIModel
-from phoenix.trace import SpanEvaluations
-
-from evaluations.metrics.frustration import USER_FRUSTRATION_PROMPT
-from evaluations.metrics.tool_correctness import TOOL_CORRECTNESS_PROMPT
-
-# Connect to Phoenix
-client = px.Client()
-
-# Get spans
-spans_df = client.get_spans_dataframe()
-
-# Filter to root spans (one per user request)
-root_spans = spans_df[spans_df["parent_id"].isna()].copy()
-
-if root_spans.empty:
-    print("No traces found. Run some queries first.")
-    exit(1)
-
-print(f"Found {len(root_spans)} traces. Running evaluations...")
-
-# Evaluation model
-eval_model = OpenAIModel(model="gpt-4o", temperature=0)
-
-# --- User Frustration ---
-# NOTE: Template variables {input}, {output}, {tool_calls} must map to span DataFrame columns.
-# Phoenix span columns are typically: "attributes.input.value", "attributes.output.value".
-# You may need to rename columns or use provide a `template_variables` mapping.
-# Check Phoenix docs: https://arize.com/docs/phoenix/evaluation/python-quickstart
-
-frustration_results = llm_classify(
-    dataframe=root_spans,
-    template=USER_FRUSTRATION_PROMPT,
-    model=eval_model,
-    rails=["frustrated", "not_frustrated"],
-    provide_explanation=True,
-)
-
-client.log_evaluations(
-    SpanEvaluations(
-        eval_name="User Frustration",
-        dataframe=frustration_results,
-    )
-)
-
-frustrated_count = (frustration_results["label"] == "frustrated").sum()
-total = len(frustration_results)
-print(f"User Frustration: {frustrated_count}/{total} frustrated ({frustrated_count/total*100:.0f}%)")
-
-# --- Tool Correctness ---
-tool_correctness_results = llm_classify(
-    dataframe=root_spans,
-    template=TOOL_CORRECTNESS_PROMPT,
-    model=eval_model,
-    rails=["correct", "incorrect"],
-    provide_explanation=True,
-)
-
-client.log_evaluations(
-    SpanEvaluations(
-        eval_name="Tool Usage Correctness",
-        dataframe=tool_correctness_results,
-    )
-)
-
-correct_count = (tool_correctness_results["label"] == "correct").sum()
-total = len(tool_correctness_results)
-print(f"Tool Correctness: {correct_count}/{total} correct ({correct_count/total*100:.0f}%)")
-
-# --- Create frustrated dataset ---
-frustrated_df = root_spans[frustration_results["label"] == "frustrated"]
-if not frustrated_df.empty:
-    dataset = client.upload_dataset(
-        dataframe=frustrated_df,
-        dataset_name="frustrated_interactions",
-        input_keys=["attributes.input.value"],
-        output_keys=["attributes.output.value"],
-    )
-    print(f"Created 'frustrated_interactions' dataset with {len(frustrated_df)} examples.")
-else:
-    print("No frustrated interactions found — no dataset created.")
-
-print("Evaluations complete. View results in Phoenix UI at http://localhost:6006")
-```
-
----
-
-## Notes
-
-- The `{input}`, `{output}`, and `{tool_calls}` placeholders are filled by Phoenix from span attributes. Check Phoenix docs for the exact column names — they may be `attributes.input.value`, `attributes.output.value`, etc.
-- The evaluation model uses GPT-4o at temperature=0 for deterministic judgments.
-- The frustrated interactions dataset (Step 6 requirement) is created automatically from evaluation results.
-- Run evaluations AFTER the 10 trace queries have been executed, not before.
+For a Solutions Engineering leader reviewing evaluation results before a customer deployment, the summary view in Phoenix's Evaluations tab provides the fastest read: what percentage of interactions pass all three metrics, and for the ones that fail, which metric fails most often. That single distribution tells you where to invest your next round of prompt engineering.
