@@ -543,8 +543,6 @@ src/
 ├── pyproject.toml
 ├── run_traces.py                   # Trace generator — 11 queries, cross-platform Python
 ├── run_evals.py                    # Evaluation runner — 3 LLM-as-judge metrics, trace-level
-├── run_traces.sh                   # Trace generator (bash, legacy — prefer run_traces.py)
-├── setup.sh                        # One-command setup (Docker path, macOS/Linux only)
 ├── RUNNING.md                      # Extended setup guide (some sections outdated — prefer this README)
 └── CHANGELOG.md
 ```
