@@ -15,7 +15,7 @@ TravelShaper needs two API keys: an OpenAI key (powers the agent and validation 
 - **OpenAI** (required) — [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 - **SerpAPI** (required for flights, hotels, cultural guide) — [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key). Free tier: 250 searches/month (~60–125 full briefings). Without this key, the agent falls back to DuckDuckGo for everything — functional, but limited.
 
-You will create a `.env` file with these keys during setup. The `.env` file is listed in `.gitignore` to avoid being committed - BUT STAY VIGILANT AND USE BEST PRACTICES TO NEVER ACCIDENTALLY LEAK AUTH INFO.
+You will create a `.env` file with these keys during setup. The `.env` file is listed in `.gitignore` to avoid being committed, but be aware of the contents of every commit so that you never leak authentication information. 
 
 ---
 
