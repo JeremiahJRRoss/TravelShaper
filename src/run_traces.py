@@ -1,20 +1,24 @@
 """TravelShaper — Phoenix trace generator.
 
 Fires 11 queries against the running server and generates traces
-viewable in Phoenix at http://localhost:6006. After all queries
-complete, exports the traces to a timestamped JSON file via
-Phoenix's GraphQL API.
+viewable in Phoenix at http://localhost:6006. Run this from the
+src/ directory after starting the Docker Compose stack.
+
+The script runs on your local machine (not inside Docker). It
+sends HTTP requests to the server at localhost:8000, which is the
+Docker container exposed on that port. All traces are recorded by
+Phoenix automatically — open http://localhost:6006 to view them.
 
 Uses only the requests library (already a project dependency) and
-the Python standard library. No platform-specific commands, no
-bash, no jq — works identically on Windows, macOS, and Linux.
+the Python standard library. No Phoenix packages, no pandas, no
+platform-specific commands.
 
 Usage:
-    python run_traces.py                     # default: http://localhost:8000
-    python run_traces.py http://localhost:8000  # explicit base URL
+    cd src
+    python run_traces.py                        # default: http://localhost:8000
+    python run_traces.py http://localhost:8000   # explicit base URL
 """
 
-import json
 import sys
 import time
 from datetime import date, timedelta
@@ -286,40 +290,6 @@ def fire(number: int, label: str, body: dict) -> None:
     print()
 
 
-def export_traces() -> str | None:
-    """Export traces from Phoenix via GraphQL. Returns filename or None."""
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"trace-results_{timestamp}.json"
-
-    graphql_query = {
-        "query": (
-            "{ spans(last: 100, sort: { col: startTime, dir: desc }) "
-            "{ edges { node { name spanKind statusCode startTime latencyMs "
-            "parentId context { traceId spanId } input { value } "
-            "output { value } attributes } } } }"
-        )
-    }
-
-    try:
-        r = requests.post(
-            f"{PHOENIX_URL}/graphql",
-            json=graphql_query,
-            headers={"Content-Type": "application/json"},
-            timeout=15,
-        )
-        r.raise_for_status()
-
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(r.text)
-
-        return filename
-
-    except requests.exceptions.ConnectionError:
-        return None
-    except Exception:
-        return None
-
-
 def main() -> None:
     print()
     print("  TravelShaper — Phoenix Trace Generator")
@@ -338,37 +308,16 @@ def main() -> None:
         if i < len(QUERIES):
             time.sleep(PAUSE_SECONDS)
 
-    # ── Export traces ─────────────────────────────────────────
-    print()
-    print("  Exporting traces from Phoenix...")
-
-    filename = export_traces()
-    if filename:
-        import os
-
-        size = os.path.getsize(filename)
-        if size > 0:
-            # Format size in human-readable form
-            if size > 1_000_000:
-                size_str = f"{size / 1_000_000:.1f}MB"
-            elif size > 1_000:
-                size_str = f"{size / 1_000:.1f}KB"
-            else:
-                size_str = f"{size}B"
-            print(f"  ✓ Exported to {filename} ({size_str})")
-        else:
-            print("  ✗ Export file is empty — Phoenix may have no trace data yet")
-            os.remove(filename)
-    else:
-        print(
-            "  ✗ Export failed — Phoenix may not be reachable at "
-            f"{PHOENIX_URL}"
-        )
-
+    # ── Done ──────────────────────────────────────────────────
     print()
     print("  All 11 queries complete.")
     print(f"  View traces → {PHOENIX_URL}")
-    print("  Run evals  → python -m evaluations.run_evals")
+    print()
+    print("  To export traces to CSV, run inside the container:")
+    print("    docker compose exec travelshaper python -m scripts.export_spans")
+    print()
+    print("  To run evaluations:")
+    print("    docker compose exec travelshaper python -m evaluations.run_evals")
     print()
 
 
