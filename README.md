@@ -39,39 +39,10 @@ The `.env` file is listed in `.gitignore` and will never be committed. If you se
 
 There are two ways to run TravelShaper. Pick the one that fits your situation — they produce identical results.
 
-### Option A: Docker Compose 
+### Option A: Docker Compose (recommended)
 
 This is the fastest path. Docker handles Python versions, dependencies, and Phoenix in one command. You do not need a virtual environment.
 
-Use the following steps  (Docker caches aggressively — this ensures fresh containers), to build and spin up your docker containers. 
-
-```bash
-docker compose build --no-cache
-docker compose up -d
-```
-
-verify that containers are working using docker ps 
-
-```bash
-docker ps
-```
-The following services are now available
-
-| Service | URL |
-|---------|-----|
-| TravelShaper (app + API) | [http://localhost:8000](http://localhost:8000) |
-| Phoenix (tracing UI) | [http://localhost:6006](http://localhost:6006) |
-
-To stop everything:
-
-```bash
-docker compose down
-# or, if using legacy Docker Compose:
-docker-compose down
-```
-### Option B: Docker Compose and testing using a bash script (recommended)
-
-A bash script has been provided to automate the spinup and testing processes. 
 ```bash
 cd src
 chmod +x setup.sh
@@ -93,9 +64,14 @@ docker compose down
 docker-compose down
 ```
 
+To rebuild after code changes (Docker caches aggressively — this ensures fresh containers):
 
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
 
-### Option C:  Local virtual environment
+### Option B: Local virtual environment
 
 Use this if you prefer working outside Docker, want hot-reload during development, or need to debug with local tools. A virtual environment is required — do not install into your system Python.
 
@@ -305,6 +281,24 @@ src/
 
 ---
 
+## Documentation
+
+The `docs/` directory contains the full design record for the project. Each document covers a specific dimension of the system and is written to be self-contained — you can read any one of them without needing the others first.
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](src/docs/ARCHITECTURE.md) | Software architecture document covering component design, data flow, LLM decision making, system prompt rationale, tool design patterns, input validation architecture, deployment topology, and the decision log for every major technical choice. The most comprehensive single document in the project. |
+| [PRD.md](src/docs/PRD.md) | Product requirements document defining the target user, jobs to be done, functional and non-functional requirements, scope boundaries, API contract, evaluation criteria, and the future roadmap. Start here if you want to understand *what* TravelShaper is and *why* it makes the choices it does. |
+| [system-prompt-spec.md](src/docs/system-prompt-spec.md) | Specification for the two system prompts (save-money and full-experience) including the voice definitions, routing logic, shared structural requirements, tool usage instructions, and the design reasoning behind using two prompts instead of one. |
+| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 14 tests across three test files, including mock path rules, exact mock data shapes, and assertion criteria for every test case. |
+| [docker-spec.md](src/docs/docker-spec.md) | Dockerfile and docker-compose.yml with line-by-line commentary explaining why each decision was made — including why Phoenix packages are installed via pip, why the full `arize-phoenix` server is excluded from the app container, and the `temperature` model_kwargs workaround. |
+| [evaluation-prompts.md](src/docs/evaluation-prompts.md) | The exact prompts used in the Phoenix evaluation pipeline for all three metrics (user frustration, tool usage correctness, answer completeness), with rationale for why each metric was chosen based on specific failure modes observed during development. |
+| [trace-queries.md](src/docs/trace-queries.md) | All 11 trace queries with their expected tool dispatch, voice routing, and a coverage matrix showing which tools, budget modes, and edge cases each query exercises. |
+| [implementation-plan.md](src/docs/implementation-plan.md) | Step-by-step build plan used during development, with acceptance criteria for each step. Useful for understanding the order in which the system was assembled. |
+| [presentation-outline.md](src/docs/presentation-outline.md) | 20–25 minute presentation outline covering architecture, observability (OpenTelemetry / OpenInference concepts), evaluation methodology, deployment design, and a live demo script with both browser UI and curl options. |
+
+---
+
 ## Architecture
 
 The agent uses a standard LangGraph ReAct loop. The graph topology is unchanged from the starter app — the extension adds tools, not complexity.
@@ -363,7 +357,7 @@ There is a pattern in how TravelShaper makes its choices, and the pattern is wor
 - Cultural guidance is practical advice based on common norms, not absolute rules.
 - Designed for English-speaking American travellers; guidance assumes U.S. norms as baseline.
 - Single-turn: no conversation memory between requests.
-- SerpAPI free tier supports ~60–125 full briefings per month. This service should be replaced for production to avoid potential legal issues
+- SerpAPI free tier supports ~60–125 full briefings per month.
 - Voice routing uses keyword matching — the budget voice triggers on `save money`, `budget`, `cheapest`, or `spend as little` appearing in the message. Synonyms like "frugal" or "inexpensive" will not trigger it and will default to the full-experience voice.
 
 ---
