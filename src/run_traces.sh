@@ -9,6 +9,7 @@
 #   ./run_traces.sh http://...   # custom base URL
 #
 # Works on both macOS (BSD date) and Linux (GNU date).
+# Exports traces to JSON using curl — no Python required.
 # ============================================================
 set -e
 
@@ -210,9 +211,27 @@ fire 11 "Boston → Paris · PAST DATES · Error handling test" \
 }'
 
 # ============================================================
+# Export traces from Phoenix via GraphQL — no Python required
+# ============================================================
+EXPORT_FILE="trace-results_$(date +%Y-%m-%d_%H-%M-%S).json"
+
 echo ""
-echo "  Exporting spans to CSV..."
-python3 -m scripts.export_spans || echo "  (Span export skipped — Phoenix may not be reachable)"
+echo "  Exporting traces to ${EXPORT_FILE}..."
+
+curl -s -X POST http://localhost:6006/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ spans(last: 100, sort: { col: startTime, dir: desc }) { edges { node { name spanKind statusCode startTime latencyMs parentId context { traceId spanId } input { value } output { value } attributes } } } }"}' \
+  > "${EXPORT_FILE}"
+
+# Check if the file was written and is not empty
+if [ -s "${EXPORT_FILE}" ]; then
+  FILE_SIZE=$(ls -lh "${EXPORT_FILE}" | awk '{print $5}')
+  echo "  ✓ Exported to ${EXPORT_FILE} (${FILE_SIZE})"
+else
+  echo "  ✗ Export failed — Phoenix may not be reachable at http://localhost:6006"
+  rm -f "${EXPORT_FILE}"
+fi
+
 echo ""
 echo "  All 11 queries complete."
 echo "  View traces → http://localhost:6006"
