@@ -7,7 +7,6 @@ __pycache__
 .venv
 docs/
 tests/
-evaluations/
 scripts/
 *.md
 !README.md
