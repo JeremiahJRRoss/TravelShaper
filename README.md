@@ -97,6 +97,15 @@ To stop the stack: `docker compose down`. To rebuild after code changes: `docker
 
 Once the Docker stack is running and your venv is set up, these are the things you will do most often.
 
+### Access the browser UI
+
+Open [http://localhost:8000](http://localhost:8000) in any browser. The form collects departure, destination, dates, budget mode, interests, and optional preferences. Click "Plan my trip →" to get a full briefing streamed in real time. No login, no setup — the browser talks directly to the same API that curl uses.
+
+### Access Phoenix (tracing UI)
+
+Open [http://localhost:6006](http://localhost:6006) in any browser. Every request to `/chat` or `/chat/stream` generates a trace. Click into any trace to see the full tool call chain — which tools were called, what arguments were passed, how long each step took, and the agent's final response. Phoenix runs as a separate container started by Docker Compose and requires no additional setup.
+
+
 ### Test the API with a single curl request
 
 ```
@@ -119,13 +128,6 @@ curl http://localhost:8000/health
 
 Expected output: `{"status":"ok"}`
 
-### Access the browser UI
-
-Open [http://localhost:8000](http://localhost:8000) in any browser. The form collects departure, destination, dates, budget mode, interests, and optional preferences. Click "Plan my trip →" to get a full briefing streamed in real time. No login, no setup — the browser talks directly to the same API that curl uses.
-
-### Access Phoenix (tracing UI)
-
-Open [http://localhost:6006](http://localhost:6006) in any browser. Every request to `/chat` or `/chat/stream` generates a trace. Click into any trace to see the full tool call chain — which tools were called, what arguments were passed, how long each step took, and the agent's final response. Phoenix runs as a separate container started by Docker Compose and requires no additional setup.
 
 ### Query trace information from the terminal
 
@@ -142,17 +144,6 @@ curl -s http://localhost:6006/v1/traces?limit=5 | python3 -m json.tool
 ```
 
 If you prefer to work with trace data offline, `run_traces.py` saves every query's input and response to a timestamped JSON file in the `src/` directory.
-
-### Generate traces and run evaluations
-
-From the `src/` directory with the venv active:
-
-```
-python run_traces.py
-python run_evals.py
-```
-
-The first script fires 11 queries against the server and records traces in Phoenix. The second scores those traces with three LLM-as-judge metrics (frustration, tool correctness, completeness) and writes the results back to Phoenix. For a quick smoke test, `python run_traces.py 3` fires only the first 3 queries, and `python run_evals.py 5` evaluates only the 5 most recent traces.
 
 ---
 
