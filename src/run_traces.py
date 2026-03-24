@@ -1,6 +1,6 @@
 """TravelShaper — Phoenix trace generator.
 
-Fires 11 queries against the running server and generates traces
+Fires queries against the running server and generates traces
 viewable in Phoenix at http://localhost:6006. Saves all query
 inputs and responses to a timestamped JSON file locally.
 
@@ -14,8 +14,10 @@ platform-specific commands.
 
 Usage:
     cd src
-    python run_traces.py                        # default: http://localhost:8000
-    python run_traces.py http://localhost:8000   # explicit base URL
+    python run_traces.py              # run all 11 queries (default)
+    python run_traces.py 3            # run first 3 queries (quick test)
+    python run_traces.py all          # run all 11 queries (explicit)
+    python run_traces.py 3 http://localhost:8000   # 3 queries, custom URL
 """
 
 import json
@@ -25,9 +27,27 @@ from datetime import date, timedelta
 
 import requests
 
-# ── Configuration ────────────────────────────────────────────
+# ── Argument parsing ─────────────────────────────────────────
+# Accepts up to two arguments in any order:
+#   - A number or "all" → how many queries to run
+#   - A URL (starts with http) → server base URL
 
-BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
+BASE_URL = "http://localhost:8000"
+MAX_QUERIES = None  # None means all
+
+for arg in sys.argv[1:]:
+    if arg.lower() in ("all", "0"):
+        MAX_QUERIES = None
+    elif arg.startswith("http"):
+        BASE_URL = arg
+    else:
+        try:
+            MAX_QUERIES = int(arg)
+        except ValueError:
+            print(f"  Usage: python run_traces.py [count | all] [http://host:port]")
+            print(f"  Got: '{arg}'")
+            sys.exit(1)
+
 PHOENIX_URL = "http://localhost:6006"
 PAUSE_SECONDS = 3
 
@@ -310,22 +330,27 @@ def fire(number: int, label: str, expected: str, body: dict) -> dict:
 
 
 def main() -> None:
+    # ── Apply query limit ─────────────────────────────────────
+    queries_to_run = QUERIES[:MAX_QUERIES] if MAX_QUERIES else QUERIES
+
+    count_display = f"{len(queries_to_run)} of {len(QUERIES)}" if MAX_QUERIES else f"all {len(QUERIES)}"
+
     print()
     print("  TravelShaper — Phoenix Trace Generator")
     print(f"  Target:  {BASE_URL}")
-    print(f"  Queries: {len(QUERIES)}")
+    print(f"  Queries: {count_display}")
     print(f"  Dates generated relative to: {today.isoformat()}")
     print()
     print("  Starting in 2 seconds...")
     time.sleep(2)
     print()
 
-    # ── Fire all queries ──────────────────────────────────────
+    # ── Fire queries ──────────────────────────────────────────
     results = []
-    for i, query in enumerate(QUERIES, start=1):
+    for i, query in enumerate(queries_to_run, start=1):
         result = fire(i, query["label"], query["expected"], query["body"])
         results.append(result)
-        if i < len(QUERIES):
+        if i < len(queries_to_run):
             time.sleep(PAUSE_SECONDS)
 
     # ── Save results ──────────────────────────────────────────
@@ -335,7 +360,7 @@ def main() -> None:
     output = {
         "generated": today.isoformat(),
         "target": BASE_URL,
-        "total_queries": len(QUERIES),
+        "total_queries": len(queries_to_run),
         "results": results,
     }
 
@@ -346,7 +371,7 @@ def main() -> None:
     failed = len(results) - succeeded
 
     print()
-    print(f"  All {len(QUERIES)} queries complete. {succeeded} succeeded, {failed} failed.")
+    print(f"  {len(queries_to_run)} queries complete. {succeeded} succeeded, {failed} failed.")
     print(f"  Results saved → {filename}")
     print(f"  View traces  → {PHOENIX_URL}")
     print()
