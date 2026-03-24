@@ -6,6 +6,23 @@ Every recommendation includes a hyperlink and an explanation of *why* it was cho
 
 ---
 
+## What It Does
+
+TravelShaper takes a departure city, destination, dates, budget preference, and interests, then dispatches four tools to gather live data:
+
+- **search_flights** — Google Flights via SerpAPI (prices, airlines, layovers)
+- **search_hotels** — Google Hotels via SerpAPI (rates, ratings, amenities)
+- **get_cultural_guide** — scoped Google search for etiquette, language, dress code
+- **duckduckgo_search** — open web search for interests and gaps (no key needed)
+
+It synthesises the results into a single briefing covering getting there, where to stay, cultural prep, and what to do — tailored to your budget mode and selected interests.
+
+The agent runs two distinct voices depending on budget mode. "Save money" activates a Bourdain / Billy Dee Williams / Gladwell voice — muscular prose, insider knowledge, budget as philosophy. "Full experience" activates a Robin Leach / Pharrell / Rushdie voice — theatrical, joyful, literary. Both are instructed to include a markdown hyperlink for every named place, hotel, restaurant, and attraction.
+
+Voice routing works by keyword matching on the assembled message string. The browser UI always includes the exact phrase "save money" or "full experience" in the message it constructs, so routing is reliable from the form. When using curl or the API directly, include one of these keywords in your message: `save money`, `budget`, `cheapest`, or `spend as little` to trigger the budget voice. Any message without these keywords defaults to the full-experience voice.
+
+---
+
 ## Before You Begin
 
 TravelShaper needs two API keys: an OpenAI key (powers the agent and validation classifiers) and a SerpAPI key (powers flight, hotel, and cultural guide searches). Everything else lives inside the project.
@@ -280,23 +297,6 @@ Then open [http://localhost:6006](http://localhost:6006) and click the **Evaluat
 
 For the full evaluation prompt text and design rationale, see [docs/evaluation-prompts.md](src/docs/evaluation-prompts.md).
 
-
----
-
-## What It Does
-
-TravelShaper takes a departure city, destination, dates, budget preference, and interests, then dispatches four tools to gather live data:
-
-- **search_flights** — Google Flights via SerpAPI (prices, airlines, layovers)
-- **search_hotels** — Google Hotels via SerpAPI (rates, ratings, amenities)
-- **get_cultural_guide** — scoped Google search for etiquette, language, dress code
-- **duckduckgo_search** — open web search for interests and gaps (no key needed)
-
-It synthesises the results into a single briefing covering getting there, where to stay, cultural prep, and what to do — tailored to your budget mode and selected interests.
-
-The agent runs two distinct voices depending on budget mode. "Save money" activates a Bourdain / Billy Dee Williams / Gladwell voice — muscular prose, insider knowledge, budget as philosophy. "Full experience" activates a Robin Leach / Pharrell / Rushdie voice — theatrical, joyful, literary. Both are instructed to include a markdown hyperlink for every named place, hotel, restaurant, and attraction.
-
-Voice routing works by keyword matching on the assembled message string. The browser UI always includes the exact phrase "save money" or "full experience" in the message it constructs, so routing is reliable from the form. When using curl or the API directly, include one of these keywords in your message: `save money`, `budget`, `cheapest`, or `spend as little` to trigger the budget voice. Any message without these keywords defaults to the full-experience voice.
 
 ---
 
