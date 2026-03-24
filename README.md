@@ -83,14 +83,56 @@ This will take 1–3 minutes. Docker installs Python, Poetry, all project depend
 docker compose up -d
 ```
 
-**Step 5.** Verify the app is running:
+**Step 5.** Check that both containers are running. `docker ps` lists all active containers on your machine — you should see two, one for TravelShaper and one for Phoenix:
+
+```bash
+docker ps
+```
+
+Expected output (columns abbreviated):
+
+```
+CONTAINER ID   IMAGE                           STATUS                    PORTS
+a1b2c3d4e5f6   src-travelshaper                Up 30 seconds (healthy)   0.0.0.0:8000->8000/tcp
+f6e5d4c3b2a1   arizephoenix/phoenix:latest     Up 31 seconds             0.0.0.0:6006->6006/tcp
+```
+
+The key things to look for: both containers should show `Up` in the STATUS column, and the PORTS column should show `8000` and `6006` mapped. If a container shows `Restarting` or is missing entirely, check its logs (see Step 6).
+
+You can also use `docker compose ps` for a view scoped to just this project's services:
+
+```bash
+docker compose ps
+```
+
+**Step 6.** Check the logs if anything looks wrong. Each container writes its stdout and stderr to Docker's log system. To see the last 50 lines from the TravelShaper container:
+
+```bash
+docker compose logs --tail 50 travelshaper
+```
+
+To see Phoenix logs:
+
+```bash
+docker compose logs --tail 50 phoenix
+```
+
+To follow the logs in real time (useful while testing — press `Ctrl+C` to stop):
+
+```bash
+docker compose logs -f travelshaper
+```
+
+Common things you will see in the TravelShaper logs: `Uvicorn running on http://0.0.0.0:8000` means the server started successfully. An `OPENAI_API_KEY` or `SERPAPI_API_KEY` error means your `.env` file is missing or has invalid keys. An `AssertionError` at startup usually means a dependency conflict — rebuild with `docker compose build --no-cache`.
+
+**Step 7.** Verify the app is responding:
 
 ```bash
 curl http://localhost:8000/health
 # Expected output: {"status":"ok"}
 ```
 
-If you get a "connection refused" error, the container may still be starting. Wait 10–15 seconds and try again — the Dockerfile includes a health check that retries automatically.
+If you get a "connection refused" error, the container may still be starting. Wait 10–15 seconds and try again — the Dockerfile includes a health check that retries every 30 seconds automatically.
 
 When both services are up:
 
@@ -145,6 +187,19 @@ When it finishes:
 |---------|-----|
 | TravelShaper (app + API) | [http://localhost:8000](http://localhost:8000) |
 | Phoenix (tracing UI) | [http://localhost:6006](http://localhost:6006) |
+
+You can verify both containers are running at any time with:
+
+```bash
+docker ps
+```
+
+You should see two containers — one for TravelShaper (port 8000) and one for Phoenix (port 6006), both with `Up` status. To check logs if something went wrong during setup:
+
+```bash
+docker compose logs --tail 50 travelshaper
+docker compose logs --tail 50 phoenix
+```
 
 **Stopping the stack** works the same as Option A:
 
@@ -278,34 +333,161 @@ Voice routing works by keyword matching on the assembled message string. The bro
 
 ---
 
-## API Endpoints
+## API Endpoints and the Browser UI
 
-**`GET /`** — Browser UI. Open [http://localhost:8000](http://localhost:8000) in any browser. No curl required.
+TravelShaper exposes a REST API and serves a browser UI from the same server. The browser UI is a single HTML file that calls the streaming endpoint under the hood — everything the UI can do, curl can do too. This section explains both interfaces and how to craft requests that get the best results from the agent.
 
-**`POST /chat`** — Synchronous chat. Returns the full JSON response when the agent finishes. Useful for curl, scripts, and tests.
+### The browser UI
 
-The request body accepts four fields: `message` (required), plus optional `departure`, `destination`, and `preferences`. When `departure` and `destination` are provided, gpt-4o validates them as real places before the agent runs — correcting misspellings and rejecting fictional names. When they are omitted, place validation is skipped and the agent receives the message as-is.
+Open [http://localhost:8000](http://localhost:8000) in any browser. The form collects seven pieces of information:
+
+| Field | Required | Default | What it does |
+|-------|----------|---------|-------------|
+| Departing from | Yes | — | Free text. City or region — the agent resolves the nearest major airport. Examples: "San Francisco, CA", "London", "SFO". |
+| Destination | Yes | — | Free text. City, region, or country. Examples: "Tokyo, Japan", "Barcelona", "New Zealand". |
+| Departure date | Yes | Today | Date picker. Must be today or later. |
+| Duration | No | 2 weeks | Dropdown: 1 week, 2 weeks, 3 weeks, or 4 weeks. The return date is calculated automatically. |
+| Budget | No | Save money | Toggle between "Save money" and "Full experience". This controls which system prompt and writing voice the agent uses, and affects how hotels are sorted (lowest price vs. highest rating). |
+| Interests | No | Food checked | Six checkboxes: Food, Arts, Photo, Nature, Fitness, Nightlife. Checked interests are included in the message and drive DuckDuckGo search queries for destination-specific recommendations. |
+| Additional preferences | No | Empty | Free-text field, up to 500 characters. Used to refine web search queries — things like dietary restrictions, mobility needs, travel companions, or style preferences. This field is safety-checked by gpt-4o before the agent sees it. |
+
+When you click "Plan my trip →", the UI assembles these fields into a structured natural-language message and sends it to `POST /chat/stream`. The SSE stream shows real-time status updates (which tools are being called, when the briefing is being written) before rendering the final result as a formatted report with numbered sections.
+
+### How the UI constructs its message
+
+Understanding how the UI builds the message is useful if you want to replicate its behaviour from curl or a script. The form fields are joined into a single string that looks like this:
+
+```
+I am planning a trip departing from San Francisco, CA (please identify the
+nearest major international airport). Destination: Tokyo, Japan. Departure:
+2026-10-15. Return: 2026-10-29 (2 weeks). Budget preference: save money.
+Interests: food and dining, photography. Please provide a complete travel
+briefing with hyperlinks for every named place, restaurant, hotel, and
+attraction.
+```
+
+The `departure` and `destination` values are also sent as separate fields in the JSON body, which triggers place validation before the agent runs. If the user typed something in the preferences box, it is sent as a separate `preferences` field — the API appends it to the message internally, framed as DuckDuckGo search context.
+
+### Request schema
+
+All endpoints that accept a body use the same schema. The `message` field is the only required field — everything else is optional but improves the quality of the response and enables validation.
+
+```json
+{
+  "message": "string (required) — the trip planning request",
+  "departure": "string or null — raw departure place name, triggers validation",
+  "destination": "string or null — raw destination place name, triggers validation",
+  "preferences": "string or null — free-form text, max 500 chars, safety-checked"
+}
+```
+
+### Response schema
+
+`POST /chat` returns a single JSON object:
+
+```json
+{
+  "response": "string — the full travel briefing in markdown"
+}
+```
+
+### Crafting a complete request with curl
+
+A minimal request works — the agent will do its best with whatever you provide. But a complete request gives the agent everything it needs to call all four tools and produce a full briefing. Here is the difference.
+
+**Minimal request** — the agent receives only the message and infers what it can. No place validation runs. Results are usable but less reliable:
 
 ```bash
-# Full request with place validation:
-curl -s -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Plan a trip from NYC to Rome, September, save money, food and history.",
-    "departure": "NYC",
-    "destination": "Rome"
-  }' | python3 -m json.tool
-
-# Minimal request (no place validation):
 curl -s -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Plan a trip from NYC to Rome, September, save money, food and history."}' \
   | python3 -m json.tool
 ```
 
-**`POST /chat/stream`** — SSE streaming. Same request body as `/chat`. The browser UI uses this to show real-time status updates as each tool executes. Emits `status`, `place_corrected`, `place_error`, `validation_error`, `done`, and `error` event types.
+**Complete request** — mirrors exactly what the browser UI sends. Place validation catches misspellings, the budget keyword triggers the correct voice, dates are explicit so the flight and hotel tools get precise parameters, and interests guide DuckDuckGo queries:
 
-**`GET /health`** — Returns `{"status": "ok"}`. Used by Docker's health check and useful for verifying the server is alive.
+```bash
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "I am planning a trip departing from New York City, NY (please identify the nearest major international airport). Destination: Rome, Italy. Departure: 2026-09-10. Return: 2026-09-24 (2 weeks). Budget preference: save money. Interests: food and dining, arts and culture. Please provide a complete travel briefing with hyperlinks for every named place, restaurant, hotel, and attraction.",
+    "departure": "New York City, NY",
+    "destination": "Rome, Italy",
+    "preferences": "I want to eat in Trastevere, not near the Vatican. Allergic to shellfish."
+  }' | python3 -m json.tool
+```
+
+**What makes the message effective for the agent:**
+
+The agent reads the `message` field as natural language and decides which tools to call based on what information is present. Including all of these elements gives it the clearest signal:
+
+An explicit departure city with the phrase "please identify the nearest major international airport" tells the agent to convert the city name to an IATA code for the flight search tool. Without this, the agent sometimes passes city names instead of airport codes, which causes SerpAPI to return empty results.
+
+Dates in `YYYY-MM-DD` format are passed directly to the flight and hotel tools. Vague dates like "mid-September" work but force the agent to pick specific dates on its own, which may not match your intent.
+
+The phrase `Budget preference: save money` (or `full experience`) triggers voice routing. The agent checks for the exact keywords `save money`, `budget`, `cheapest`, or `spend as little` to select the budget voice. Any other phrasing defaults to the full-experience voice. This also affects hotel sorting — `save money` sets `sort_by=3` (lowest price) while `full experience` sets `sort_by=13` (highest rating).
+
+Listing interests by name ("food and dining, photography") gives the agent specific terms to search for with DuckDuckGo. Without interests, the agent skips interest-based search and focuses on flights, hotels, and cultural prep.
+
+The closing instruction "Please provide a complete travel briefing with hyperlinks for every named place, restaurant, hotel, and attraction" reinforces the system prompt's hyperlink requirement. The agent is already instructed to include links, but this explicit request in the user message improves compliance.
+
+The `preferences` field is appended to the message internally as "Additional context for web search queries (use when calling duckduckgo_search to refine results): ..." — so it specifically influences the DuckDuckGo tool, not the flight or hotel searches.
+
+### Scoped requests
+
+You do not have to ask for everything. The agent handles partial requests gracefully and only calls the tools that are relevant:
+
+```bash
+# Flights only — agent calls search_flights, skips hotels and cultural guide
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "I am planning a trip departing from Los Angeles, CA (please identify the nearest major international airport). Destination: London, United Kingdom. Departure: 2026-12-15. Return: 2026-12-28. Budget preference: save money. Please focus only on flight options — I have accommodation sorted.",
+    "departure": "Los Angeles, CA",
+    "destination": "London, United Kingdom"
+  }' | python3 -m json.tool
+
+# Cultural guide only — no flights, no hotels
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "I am visiting Japan for the first time next month. What should I know about etiquette, language, what to wear, and what not to do?",
+    "destination": "Japan"
+  }' | python3 -m json.tool
+
+# Already at destination — interest-based recommendations only
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "I am already in Lisbon, Portugal. I do not need flights or hotels. I want to know the best photography spots and where to eat that is not a tourist trap.",
+    "destination": "Lisbon, Portugal",
+    "preferences": "I shoot film, not digital. Looking for texture — peeling tiles, old men playing cards, laundry across alleys."
+  }' | python3 -m json.tool
+```
+
+### `POST /chat/stream` — SSE streaming
+
+Same request body as `/chat`. The browser UI uses this endpoint. Instead of waiting for the full response, it streams Server-Sent Events as the agent works. Each event has a `type` and a JSON `data` payload:
+
+| Event type | When it fires | Data shape |
+|------------|---------------|------------|
+| `status` | Each time a tool is called or the agent changes state | `{"message": "✈️  Searching flights"}` |
+| `place_corrected` | A misspelled place name was auto-corrected | `{"field": "destination", "original": "Roam", "canonical": "Rome, Italy"}` |
+| `place_error` | A place name was rejected (fictional, ambiguous) | `{"field": "destination", "message": "We couldn't find a place called 'Fakeville'."}` |
+| `validation_error` | The preferences field was rejected by safety check | `{"message": "Your additional preferences could not be used: ..."}` |
+| `done` | The agent finished — contains the full briefing | `{"response": "full markdown text..."}` |
+| `error` | Something went wrong during agent execution | `{"message": "error description"}` |
+
+Status messages cycle through tool-specific labels as the agent works: "✈️  Searching flights", "🏨  Finding hotels", "🗺️  Gathering cultural guide", "🔍  Searching the web", "📊  Processing search results", and "✍️  Writing your personalised briefing". The final status before `done` is always "🎉 Your briefing is ready".
+
+### `GET /health`
+
+Returns `{"status": "ok"}` with a 200 status code. Used by Docker's health check (configured in the Dockerfile to poll every 30 seconds) and useful for verifying the server is alive from scripts or monitoring tools:
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
 
 ---
 
@@ -478,7 +660,57 @@ There is a pattern in how TravelShaper makes its choices, and the pattern is wor
 
 ## Troubleshooting
 
-**Server won't start** — confirm your `.env` exists with valid keys. If running locally, confirm the venv is activated, you have run `poetry install -E dev`, and you have installed the `openai` package with `pip install openai`. If running Docker, try `docker compose build --no-cache`.
+### Checking Docker status
+
+If you are running TravelShaper via Docker (Options A or B), these commands help you understand what is happening inside the containers. Run all of them from the `src/` directory.
+
+**See which containers are running:**
+
+```bash
+docker ps
+```
+
+This lists every running container on your machine. You should see two rows — one for TravelShaper and one for Phoenix. If you see only one, or none, the missing container likely crashed on startup. The STATUS column tells you how long the container has been up and whether the health check is passing. A status of `Up 5 minutes (healthy)` is good. A status of `Restarting (1)` means the container is crash-looping.
+
+**See containers that are stopped or crashed:**
+
+```bash
+docker ps -a
+```
+
+The `-a` flag includes containers that have exited. If a container shows `Exited (1)` in the STATUS column, it crashed. Check its logs to find out why.
+
+**View logs for a specific service:**
+
+```bash
+docker compose logs --tail 100 travelshaper    # last 100 lines from the app
+docker compose logs --tail 100 phoenix          # last 100 lines from Phoenix
+docker compose logs --tail 100                  # last 100 lines from all services
+```
+
+**Follow logs in real time** (useful while sending test queries — press `Ctrl+C` to stop):
+
+```bash
+docker compose logs -f travelshaper
+```
+
+**Restart a single service without rebuilding:**
+
+```bash
+docker compose restart travelshaper
+```
+
+**Full reset** — stop everything, rebuild from scratch, and start fresh:
+
+```bash
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Common issues
+
+**Server won't start** — confirm your `.env` exists with valid keys. If running locally, confirm the venv is activated, you have run `poetry install -E dev`, and you have installed the `openai` package with `pip install openai`. If running Docker, check the logs with `docker compose logs --tail 50 travelshaper` and look for error messages. A common cause is a missing or malformed `.env` file. Try rebuilding with `docker compose build --no-cache`.
 
 **Auth error from OpenAI or SerpAPI** — check your `.env` file. Verify the SerpAPI key at [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key). Verify the OpenAI key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 
