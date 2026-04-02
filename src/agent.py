@@ -23,28 +23,22 @@ from tools.cultural_guide import get_cultural_guide
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Phoenix / OpenInference tracing
+# Observability — OTel routing
 # ---------------------------------------------------------------------------
-# Two layers work together:
-#   1. OpenTelemetry (OTLP) — transport layer; sends spans from this app
-#      to the Phoenix collector at PHOENIX_COLLECTOR_ENDPOINT
-#   2. OpenInference — semantic convention layer; defines what attributes
-#      LLM spans carry (input.value, output.value, llm.model_name, etc.)
-#      so Phoenix can render them in its purpose-built UI columns
-#
-# The LangChainInstrumentor auto-instruments all LangChain/LangGraph calls
-# with OpenInference attributes. Custom spans in api.py add request-level
-# metadata.
+# otel_routing.py reads OTEL_DESTINATION from .env and builds a
+# TracerProvider with the appropriate OTLP exporters (phoenix, arize,
+# both, or none). LangChainInstrumentor adds OpenInference semantic
+# attributes to every LangChain/LangGraph span. Custom spans in api.py
+# add request-level metadata.
 # ---------------------------------------------------------------------------
 try:
-    from phoenix.otel import register
+    from otel_routing import build_tracer_provider
     from openinference.instrumentation.langchain import LangChainInstrumentor
 
-    endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces")
-    tracer_provider = register(project_name="travelshaper", endpoint=endpoint)
-    LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+    _tracer_provider = build_tracer_provider()
+    LangChainInstrumentor().instrument(tracer_provider=_tracer_provider)
 except ImportError:
-    # Phoenix not installed — tracing disabled, agent still works
+    # OTel packages not installed — tracing disabled, agent still works
     pass
 
 # ---------------------------------------------------------------------------

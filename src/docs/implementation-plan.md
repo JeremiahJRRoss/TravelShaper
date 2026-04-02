@@ -47,7 +47,7 @@ dev = ["pytest", "httpx"]
 ```
 OPENAI_API_KEY=your_openai_api_key_here
 SERPAPI_API_KEY=your_serpapi_api_key_here
-PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 ```
 
 **1d. Verify existing tool modules** — Read and confirm these files exist and are correct:
@@ -77,7 +77,7 @@ try:
     import os as _os
     from phoenix.otel import register
     from openinference.instrumentation.langchain import LangChainInstrumentor
-    endpoint = _os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces")
+    endpoint = _os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006/v1/traces")
     tracer_provider = register(project_name="travelshaper", endpoint=endpoint)
     LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
 except ImportError:

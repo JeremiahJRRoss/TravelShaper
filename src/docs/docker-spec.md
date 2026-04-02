@@ -79,7 +79,7 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
+      - PHOENIX_ENDPOINT=http://phoenix:6006/v1/traces
     depends_on:
       phoenix:
         condition: service_started

@@ -64,7 +64,7 @@ from phoenix.evals import (
 
 # ── Configuration ────────────────────────────────────────────
 
-PHOENIX_URL = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006")
+PHOENIX_URL = os.environ.get("PHOENIX_ENDPOINT", "http://localhost:6006")
 PHOENIX_BASE = PHOENIX_URL.replace("/v1/traces", "")
 
 EVAL_MODEL = "gpt-4o"

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0] — 2026-04-02
+
+### Configurable OTel routing
+
+- Added `otel_routing.py` — single module owning all telemetry config
+- `OTEL_DESTINATION` in `.env` controls where traces go:
+  `phoenix` | `arize` | `both` | `none`
+- Phoenix is now optional — runs via Docker Compose `--profile phoenix`
+- Arize Cloud support via standard OTLP/HTTP — no proprietary SDK
+- Phoenix Cloud support via `PHOENIX_API_KEY`
+- Added 7 unit tests for routing logic (23 total)
+- Renamed `PHOENIX_COLLECTOR_ENDPOINT` → `PHOENIX_ENDPOINT`
+- Added `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` to Dockerfile
+- Bumped version `0.2.0` → `0.3.0`
+
 ## [0.2.0] — 2026-04-02
 
 ### Post-review restructuring and Arize alignment
