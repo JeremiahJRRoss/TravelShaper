@@ -14,10 +14,10 @@ platform-specific commands.
 
 Usage:
     cd src
-    python run_traces.py              # run all 11 queries (default)
-    python run_traces.py 3            # run first 3 queries (quick test)
-    python run_traces.py all          # run all 11 queries (explicit)
-    python run_traces.py 3 http://localhost:8000   # 3 queries, custom URL
+    python -m traces.run_traces              # run all 11 queries (default)
+    python -m traces.run_traces 3            # run first 3 queries (quick test)
+    python -m traces.run_traces all          # run all 11 queries (explicit)
+    python -m traces.run_traces 3 http://localhost:8000   # 3 queries, custom URL
 """
 
 import json

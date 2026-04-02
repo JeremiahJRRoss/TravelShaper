@@ -314,8 +314,18 @@ def chat(request: ChatRequest) -> ChatResponse:
     full_message = build_agent_message(request.message, request.preferences)
 
     if otel_trace is not None:
+        try:
+            from openinference.semconv.trace import SpanAttributes
+        except ImportError:
+            SpanAttributes = None
+
         tracer = otel_trace.get_tracer("travelshaper")
         with tracer.start_as_current_span("travelshaper.request") as span:
+            # OpenInference standard attributes (render in Phoenix UI columns)
+            if SpanAttributes:
+                span.set_attribute(SpanAttributes.INPUT_VALUE, full_message)
+                span.set_attribute(SpanAttributes.INPUT_MIME_TYPE, "text/plain")
+            # Custom attributes (appear in Phoenix span details)
             span.set_attribute("travelshaper.destination", request.destination or "")
             span.set_attribute("travelshaper.departure", request.departure or "")
             span.set_attribute("travelshaper.budget_mode",
@@ -323,11 +333,19 @@ def chat(request: ChatRequest) -> ChatResponse:
                                else "full_experience")
             span.set_attribute("travelshaper.has_preferences",
                                bool(request.preferences and request.preferences.strip()))
+
             agent_result = agent.invoke({"messages": [HumanMessage(content=full_message)]})
+
+            # Set output after agent completes
+            response_text = agent_result["messages"][-1].content
+            if SpanAttributes:
+                span.set_attribute(SpanAttributes.OUTPUT_VALUE, response_text)
+                span.set_attribute(SpanAttributes.OUTPUT_MIME_TYPE, "text/plain")
     else:
         agent_result = agent.invoke({"messages": [HumanMessage(content=full_message)]})
+        response_text = agent_result["messages"][-1].content
 
-    return ChatResponse(response=agent_result["messages"][-1].content)
+    return ChatResponse(response=response_text)
 
 
 @app.post("/chat/stream")

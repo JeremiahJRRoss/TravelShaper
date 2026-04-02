@@ -6,6 +6,7 @@ tracing is enabled when the optional phoenix extras are installed.
 """
 
 import operator
+import os
 from typing import Annotated, Literal
 
 from dotenv import load_dotenv
@@ -22,10 +23,20 @@ from tools.cultural_guide import get_cultural_guide
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Optional Phoenix / OpenInference tracing
+# Phoenix / OpenInference tracing
+# ---------------------------------------------------------------------------
+# Two layers work together:
+#   1. OpenTelemetry (OTLP) — transport layer; sends spans from this app
+#      to the Phoenix collector at PHOENIX_COLLECTOR_ENDPOINT
+#   2. OpenInference — semantic convention layer; defines what attributes
+#      LLM spans carry (input.value, output.value, llm.model_name, etc.)
+#      so Phoenix can render them in its purpose-built UI columns
+#
+# The LangChainInstrumentor auto-instruments all LangChain/LangGraph calls
+# with OpenInference attributes. Custom spans in api.py add request-level
+# metadata.
 # ---------------------------------------------------------------------------
 try:
-    import os
     from phoenix.otel import register
     from openinference.instrumentation.langchain import LangChainInstrumentor
 

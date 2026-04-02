@@ -5,7 +5,7 @@ Each query uses the full JSON schema — `departure`, `destination`, and `prefer
 
 Run the whole set in one shot:
 ```bash
-chmod +x run_traces.sh && ./run_traces.sh
+python -m traces.run_traces
 ```
 Or paste individual queries below. Traces appear at `http://localhost:6006` within seconds.
 

@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.2.0] — 2026-04-02
+
+### Post-review restructuring and Arize alignment
+
+#### Project restructuring
+- Moved `run_traces.py` into `traces/run_traces.py` with `traces/README.md`
+- Consolidated evaluation runner from project root into `evaluations/run_evals.py`
+  (kept the trace-level assembly version; added frustrated dataset creation)
+- Moved `scripts/export_spans.py` into `evaluations/export_spans.py`
+- Removed `scripts/` directory
+- Added `Makefile` with `make demo` pipeline (up, test, traces, evals, export)
+
+#### Evaluation improvements
+- Added frustrated interactions dataset creation to the primary evaluation runner
+- After scoring frustration, uploads a `frustrated_interactions` Phoenix dataset
+- Dataset info included in local JSON summary under `"datasets"` key
+
+#### Phoenix / OpenInference improvements
+- Custom spans in `api.py` now set OpenInference semantic attributes
+  (`SpanAttributes.INPUT_VALUE`, `SpanAttributes.OUTPUT_VALUE`) for proper
+  Phoenix UI rendering
+- Added `openinference-semantic-conventions` to Dockerfile dependencies
+- Added documentation distinguishing OpenTelemetry (transport) from
+  OpenInference (semantic conventions) in ARCHITECTURE.md Section 7.5
+
+#### Testing
+- Added `test_cultural_guide_tool_has_routing_docstring` — verifies tool
+  docstring contains LLM routing keywords
+- Added `test_voice_routing_selects_correct_prompt` — verifies budget
+  keyword routing to correct system prompt
+- Total tests: **16 passing** (was 14)
+
+#### Documentation
+- Updated project structure in README to reflect new layout
+- Added production observability transition path (Phoenix to Arize Cloud)
+  to ARCHITECTURE.md Section 12.4
+- Added OpenTelemetry vs OpenInference explanation (Section 7.5)
+- Updated glossary with expanded OpenInference and Arize Cloud entries
+- Documented Docker vs local Phoenix endpoint difference in `.env.example`
+- Updated all file path references across README, RUNNING.md, and docs/
+- Added Quick Start with Make section to README
+
+#### Code quality
+- Moved `import os` to top-level imports in `agent.py`
+- Added comment block in `agent.py` explaining two-layer observability
+- Bumped version `0.1.4` to `0.2.0`
+
 ## [0.1.2] — 2026-03-23
 
 ### Two changes: place validation + Tribeca art-house UI

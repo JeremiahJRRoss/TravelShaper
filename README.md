@@ -60,6 +60,21 @@ If `docker compose` (with a space) does not work but `docker-compose` (hyphenate
 On Linux, if you get a permission error from Docker, either prefix commands with `sudo` or add yourself to the docker group: `sudo usermod -aG docker $USER` (requires logout/login to take effect).
 
 ---
+
+## Quick Start with Make
+
+If you have Make installed, the entire workflow can be driven from `src/`:
+
+```bash
+cd src
+cp .env.example .env              # add your API keys
+make help                          # show all available targets
+make demo                          # full pipeline: build, test, traces, evaluate, export
+```
+
+Individual targets: `make up`, `make test`, `make traces`, `make evals`, `make export`, `make down`, `make clean`.
+
+---
 # DEMO WITH DOCKER 
 ##  Start the App
 
@@ -218,7 +233,7 @@ Your terminal prompt should now show `(.venv)` at the beginning. This tells you 
 pip install requests arize-phoenix arize-phoenix-evals pandas openai
 ```
 
-The `requests` package is all that `run_traces.py` needs. The remaining packages are for `run_evals.py`, which uses the Phoenix client to pull traces and the Phoenix evals library to score them with gpt-4o. If your system has Anaconda installed, make sure your venv is not inheriting Anaconda's packages — run `conda deactivate` before activating your venv if you see `ValueError: numpy.dtype size changed`.
+The `requests` package is all that `traces/run_traces.py` needs. The remaining packages are for `evaluations/run_evals.py`, which uses the Phoenix client to pull traces and the Phoenix evals library to score them with gpt-4o. If your system has Anaconda installed, make sure your venv is not inheriting Anaconda's packages — run `conda deactivate` before activating your venv if you see `ValueError: numpy.dtype size changed`.
 
 You only need to install these once. In future terminal sessions, just activate the venv:
 
@@ -235,12 +250,12 @@ This is the core observability workflow: generate traces by sending real queries
 
 Make sure you are in the `src/` directory with the venv active and the Docker stack is running.
 
-If you prefer to work with trace data offline, `run_traces.py` run traces and save each query's input and response to a timestamped JSON file in the `src/` directory.
+If you prefer to work with trace data offline, the trace generator saves each query's input and response to a timestamped JSON file in the `src/` directory.
 
 ### Generate traces
 
 ```
-python run_traces.py
+python -m traces.run_traces
 ```
 
 This fires 11 real queries against the server at `localhost:8000`, covering every tool combination, both budget voices, auto-correction, vague inputs, past-date error handling, and edge cases. All dates are computed dynamically relative to today so the script never goes stale.
@@ -250,8 +265,8 @@ Results are saved to a timestamped JSON file in `src/` (e.g. `trace-results_2026
 You can limit the number of queries for a quick smoke test:
 
 ```
-python run_traces.py 3            # run first 3 queries only
-python run_traces.py all          # run all 11 (the default)
+python -m traces.run_traces 3            # run first 3 queries only
+python -m traces.run_traces all          # run all 11 (the default)
 ```
 
 ### Run evaluations
@@ -259,19 +274,19 @@ python run_traces.py all          # run all 11 (the default)
 Once traces exist in Phoenix, score them:
 
 ```
-python run_evals.py
+python -m evaluations.run_evals
 ```
 
 The script connects to Phoenix at `localhost:6006`, pulls the most recent traces, groups all spans by trace ID to identify the root span (user input + agent output) and child spans (actual tool calls), and scores each trace against three metrics. The tool correctness evaluator receives the real list of tools that were called — extracted from the trace data, not inferred from the response text.
 
-Each trace is scored by three separate gpt-4o calls (one per metric). The script reads your `OPENAI_API_KEY` from the `.env` file in `src/`. A typical run against the 11 traces from `run_traces.py` takes 1–3 minutes. A heartbeat prints every 10 seconds so you know it hasn't hung.
+Each trace is scored by three separate gpt-4o calls (one per metric). The script reads your `OPENAI_API_KEY` from the `.env` file in `src/`. A typical run against the 11 traces from the trace generator takes 1–3 minutes. A heartbeat prints every 10 seconds so you know it hasn't hung.
 
 You can limit how many traces to evaluate:
 
 ```
-python run_evals.py              # evaluate 11 most recent traces (default)
-python run_evals.py 5            # evaluate 5 most recent traces
-python run_evals.py all          # evaluate all traces in Phoenix
+python -m evaluations.run_evals              # evaluate 11 most recent traces (default)
+python -m evaluations.run_evals 5            # evaluate 5 most recent traces
+python -m evaluations.run_evals all          # evaluate all traces in Phoenix
 ```
 
 Results are written back to Phoenix as annotations on the root spans and saved to a local JSON summary file (e.g. `eval-results_2026-03-23_14-08-12.json`).
@@ -281,8 +296,8 @@ Results are written back to Phoenix as annotations on the root spans and saved t
 The intended sequence is: generate traces, then immediately score them. Both commands run from the same venv, same directory, same terminal:
 
 ```
-python run_traces.py
-python run_evals.py
+python -m traces.run_traces
+python -m evaluations.run_evals
 ```
 
 Then open [http://localhost:6006](http://localhost:6006) and click the **Evaluations** tab to see scores alongside traces.
@@ -370,7 +385,7 @@ PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
 
 Tests do **not** need API keys — all external calls are mocked. The keys are only required for running the live server, traces, and evaluations.
 
-### 4. Run all 14 tests
+### 4. Run all 16 tests
 
 ```bash
 pytest tests/ -v
@@ -385,6 +400,8 @@ tests/test_tools.py::test_search_hotels_formats_results           PASSED
 tests/test_tools.py::test_cultural_guide_returns_guidance         PASSED
 tests/test_agent.py::test_agent_graph_has_expected_nodes          PASSED
 tests/test_agent.py::test_agent_tools_registered                  PASSED
+tests/test_agent.py::test_cultural_guide_tool_has_routing_docstring PASSED
+tests/test_agent.py::test_voice_routing_selects_correct_prompt    PASSED
 tests/test_api.py::test_health_endpoint                           PASSED
 tests/test_api.py::test_chat_endpoint_accepts_message             PASSED
 tests/test_api.py::test_chat_accepts_valid_preferences            PASSED
@@ -394,14 +411,14 @@ tests/test_api.py::test_chat_accepts_valid_places                 PASSED
 tests/test_api.py::test_chat_rejects_invalid_place                PASSED
 tests/test_api.py::test_chat_auto_corrects_misspelled_place       PASSED
 
-14 passed
+16 passed
 ```
 
 You can also run individual test files or single tests:
 
 ```bash
 pytest tests/test_tools.py -v          # 4 tool tests
-pytest tests/test_agent.py -v          # 2 agent graph tests
+pytest tests/test_agent.py -v          # 4 agent graph + routing tests
 pytest tests/test_api.py -v            # 8 API + validation tests
 pytest tests/test_api.py::test_chat_rejects_invalid_place -v   # single test
 ```
@@ -449,8 +466,8 @@ curl http://localhost:8000/health
 With both the server and Phoenix running:
 
 ```bash
-python run_traces.py              # all 11 queries
-python run_traces.py 3            # first 3 only (quick test)
+python -m traces.run_traces              # all 11 queries
+python -m traces.run_traces 3            # first 3 only (quick test)
 ```
 
 Traces appear at [http://localhost:6006](http://localhost:6006) within seconds.
@@ -460,9 +477,9 @@ Traces appear at [http://localhost:6006](http://localhost:6006) within seconds.
 After traces exist in Phoenix:
 
 ```bash
-python run_evals.py               # evaluate 11 most recent traces
-python run_evals.py 5             # evaluate 5 most recent
-python run_evals.py all           # evaluate everything
+python -m evaluations.run_evals               # evaluate 11 most recent traces
+python -m evaluations.run_evals 5             # evaluate 5 most recent
+python -m evaluations.run_evals all           # evaluate everything
 ```
 
 Results are written back to Phoenix and saved to a local JSON file.
@@ -475,13 +492,13 @@ Open a terminal and run the complete sequence:
 cd src
 source .venv/bin/activate          # activate venv (macOS/Linux)
 
-pytest tests/ -v                   # run all 14 tests (no API keys needed)
+pytest tests/ -v                   # run all 16 tests (no API keys needed)
 
 uvicorn api:app --port 8000 &     # start server in background
 sleep 2                            # wait for startup
 
-python run_traces.py 3             # generate 3 traces (quick smoke test)
-python run_evals.py 3              # evaluate those 3 traces
+python -m traces.run_traces 3             # generate 3 traces (quick smoke test)
+python -m evaluations.run_evals 3         # evaluate those 3 traces
 
 # Open http://localhost:8000 for the browser UI
 # Open http://localhost:6006 for Phoenix traces + evaluations
@@ -723,16 +740,22 @@ src/
 │   ├── hotels.py                   # search_hotels (SerpAPI Google Hotels)
 │   └── cultural_guide.py          # get_cultural_guide (scoped Google search)
 ├── evaluations/
-│   ├── run_evals.py                # Legacy evaluation runner (prefer run_evals.py at project root)
+│   ├── __init__.py
+│   ├── run_evals.py                # Evaluation runner — 3 LLM-as-judge metrics, trace-level
+│   ├── export_spans.py             # Export Phoenix spans to CSV
+│   ├── README.md                   # Evaluation methodology and usage
 │   └── metrics/
-│       ├── frustration.py          # Reference frustration prompt
+│       ├── __init__.py
+│       ├── frustration.py          # USER_FRUSTRATION_PROMPT (reference)
 │       ├── answer_completeness.py  # ANSWER_COMPLETENESS_PROMPT
 │       └── tool_correctness.py     # TOOL_CORRECTNESS_PROMPT
-├── scripts/
-│   └── export_spans.py             # Export Phoenix spans to CSV
+├── traces/
+│   ├── __init__.py
+│   ├── run_traces.py               # Trace generator — 11 queries, cross-platform Python
+│   └── README.md                   # Trace query documentation and usage
 ├── tests/
 │   ├── test_tools.py               # 4 tool tests
-│   ├── test_agent.py               # 2 agent graph tests
+│   ├── test_agent.py               # 4 agent graph + routing tests
 │   └── test_api.py                 # 8 endpoint + validation tests
 ├── docs/
 │   ├── ARCHITECTURE.md
@@ -746,10 +769,9 @@ src/
 │   └── presentation-outline.md
 ├── Dockerfile
 ├── docker-compose.yml
+├── Makefile                        # Build/test/demo automation
 ├── pyproject.toml
-├── run_traces.py                   # Trace generator — 11 queries, cross-platform Python
-├── run_evals.py                    # Evaluation runner — 3 LLM-as-judge metrics, trace-level
-├── RUNNING.md                      # Extended setup guide (some sections outdated — prefer this README)
+├── RUNNING.md
 └── CHANGELOG.md
 ```
 
@@ -764,7 +786,7 @@ The `docs/` directory contains the full design record for the project. Each docu
 | [ARCHITECTURE.md](src/docs/ARCHITECTURE.md) | Software architecture document covering component design, data flow, LLM decision making, system prompt rationale, tool design patterns, input validation architecture, deployment topology, and the decision log for every major technical choice. The most comprehensive single document in the project. |
 | [PRD.md](src/docs/PRD.md) | Product requirements document defining the target user, jobs to be done, functional and non-functional requirements, scope boundaries, API contract, evaluation criteria, and the future roadmap. Start here if you want to understand *what* TravelShaper is and *why* it makes the choices it does. |
 | [system-prompt-spec.md](src/docs/system-prompt-spec.md) | Specification for the two system prompts (save-money and full-experience) including the voice definitions, routing logic, shared structural requirements, tool usage instructions, and the design reasoning behind using two prompts instead of one. |
-| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 14 tests across three test files, including mock path rules, exact mock data shapes, and assertion criteria for every test case. |
+| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 16 tests across three test files, including mock path rules, exact mock data shapes, and assertion criteria for every test case. |
 | [docker-spec.md](src/docs/docker-spec.md) | Dockerfile and docker-compose.yml with line-by-line commentary explaining why each decision was made — including why Phoenix packages are installed via pip, why the full `arize-phoenix` server is excluded from the app container, and the `temperature` model_kwargs workaround. |
 | [evaluation-prompts.md](src/docs/evaluation-prompts.md) | The exact prompts used in the Phoenix evaluation pipeline for all three metrics (user frustration, tool usage correctness, answer completeness), with rationale for why each metric was chosen based on specific failure modes observed during development. |
 | [trace-queries.md](src/docs/trace-queries.md) | All 11 trace queries with their expected tool dispatch, voice routing, and a coverage matrix showing which tools, budget modes, and edge cases each query exercises. |
@@ -943,17 +965,13 @@ docker compose up -d
 
 **Tests fail with ModuleNotFoundError** — the most common cause is running pytest outside the virtual environment. Check that you see `(.venv)` in your terminal prompt. If not, activate the venv (see "Set Up Python for Tests and Traces" above). If the missing module is `pytest` or `httpx`, run `poetry install -E dev`. If the missing module is `openai`, run `pip install openai`. Make sure you are running pytest from inside the `src/` directory.
 
-**`run_traces.py` fails with `ConnectionError`** — the TravelShaper server is not running. Start the Docker stack with `docker compose up -d` and wait for the health check to pass (`curl http://localhost:8000/health`), then run the script again.
+**Trace generator fails with `ConnectionError`** — the TravelShaper server is not running. Start the Docker stack with `docker compose up -d` and wait for the health check to pass (`curl http://localhost:8000/health`), then run `python -m traces.run_traces` again.
 
-**`run_traces.py` saves a JSON file but some queries show errors** — open the JSON file and check the `status` and `error` fields for each result. Common causes: an expired or missing SerpAPI key, or an expired OpenAI key. Check your `.env` file inside `src/`.
+**Trace generator saves a JSON file but some queries show errors** — open the JSON file and check the `status` and `error` fields for each result. Common causes: an expired or missing SerpAPI key, or an expired OpenAI key. Check your `.env` file inside `src/`.
 
 **Poor or incomplete results** — include origin, destination, dates, and budget in your request. Check SerpAPI usage (free tier: 250 searches/month). Try well-known destinations first.
 
 **Missing traces in Phoenix** — confirm Phoenix is running (`docker ps` should show the Phoenix container). Run at least one `/chat` query, then refresh the Phoenix UI at [http://localhost:6006](http://localhost:6006).
-
-**`run_traces.sh` fails with `date: illegal option -- d`** — you are running the legacy bash script on macOS. Use `run_traces.py` instead, which handles dates with Python's `datetime` module and works on all platforms.
-
-**`run_traces.sh` fails with import errors** — the bash script calls `python3 -m scripts.export_spans` at the end, which requires Phoenix packages that aren't in your local venv. Use `run_traces.py` instead — it saves results to a local JSON file using only the `requests` library.
 
 ---
 

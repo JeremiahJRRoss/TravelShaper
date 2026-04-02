@@ -226,9 +226,9 @@ Include a NOTE comment about checking Phoenix docs for exact column name mapping
 
 ---
 
-## Step 11: Create run_traces.sh
+## Step 11: Create traces/run_traces.py
 
-Create a shell script with all 10 trace queries from `docs/trace-queries.md`:
+Create a Python trace generator with all 11 trace queries from `docs/trace-queries.md`:
 
 ```bash
 #!/bin/bash

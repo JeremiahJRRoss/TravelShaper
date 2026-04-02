@@ -90,16 +90,21 @@ src/
 │   ├── hotels.py              # search_hotels
 │   └── cultural_guide.py      # get_cultural_guide
 ├── evaluations/
-│   ├── run_evals.py           # Evaluation runner
+│   ├── run_evals.py           # Evaluation runner — 3 LLM-as-judge metrics, trace-level
+│   ├── export_spans.py        # Export Phoenix spans to CSV
 │   └── metrics/
 │       ├── frustration.py     # USER_FRUSTRATION_PROMPT
+│       ├── answer_completeness.py # ANSWER_COMPLETENESS_PROMPT
 │       └── tool_correctness.py# TOOL_CORRECTNESS_PROMPT
+├── traces/
+│   └── run_traces.py          # Trace generator — 11 queries
 ├── tests/
 │   ├── test_tools.py          # 4 tool tests
-│   ├── test_agent.py          # 2 agent graph tests
+│   ├── test_agent.py          # 4 agent graph + routing tests
 │   └── test_api.py            # 8 API + validation tests
 ├── Dockerfile
 ├── docker-compose.yml
+├── Makefile                   # Build/test/demo automation
 ├── pyproject.toml
 └── .env
 ```
@@ -365,7 +370,7 @@ Evaluations run as a separate batch process after traces are collected:
 Phoenix (stored traces)
     │
     ▼
-run_evals.py
+evaluations/run_evals.py
     ├── Fetch spans from Phoenix
     ├── Apply frustration evaluator
     ├── Apply tool correctness evaluator
@@ -379,6 +384,43 @@ Three metrics were chosen based on failure modes observed during development and
 * **User Frustration** catches the most common end-user-visible failure: the agent silently omitting requested information when a tool returns empty results, or contradicting the user's stated budget preference. Uses Phoenix's built-in template for validated detection.
 * **Tool Usage Correctness** catches the most common agent-level failure: incorrect IATA codes passed to `search_flights`, skipped `get_cultural_guide` calls for international trips, and unnecessary tool calls on vague queries. These are invisible to the user but directly cause the incomplete briefings that frustration detects.
 * **Answer Completeness** fills a gap the other two metrics can't cover: distinguishing intentionally scoped responses (user asked for flights only) from unintentionally incomplete ones (agent failed to search hotels). Its three-tier classification (complete/partial/incomplete) with scope-awareness prevents false positives on the 4 scoped queries in the trace set.
+
+### 7.5 OpenTelemetry vs OpenInference — Two Layers of Observability
+
+TravelShaper's observability stack has two distinct layers that work together:
+
+**OpenTelemetry (OTLP) — The Transport Layer**
+
+OpenTelemetry is a vendor-neutral standard for collecting and exporting telemetry data (traces, metrics, logs). In TravelShaper:
+- `phoenix.otel.register()` configures an OTLP exporter that sends spans to the Phoenix collector endpoint via HTTP
+- Every span carries a trace ID, parent ID, start/end timestamps, and arbitrary attributes
+- The transport is agnostic — it works identically whether the destination is Phoenix, Jaeger, Datadog, or Arize Cloud
+
+**OpenInference — The Semantic Convention Layer**
+
+OpenInference is an open-source standard (created by Arize) that defines what attributes LLM-specific spans should carry. Without it, an LLM call span would just be a generic function call with a duration. With OpenInference:
+- `input.value` contains the prompt text
+- `output.value` contains the completion text
+- `llm.model_name` identifies which model was called
+- `llm.token_count.prompt` and `llm.token_count.completion` track token usage
+- Tool spans carry `tool.name`, `tool.parameters`, and `tool.result`
+
+The `openinference-instrumentation-langchain` package automatically adds these attributes to every LangChain/LangGraph span. This is why Phoenix can display our traces in a purpose-built LLM UI (with prompt/response columns, token counts, and tool call trees) rather than as generic distributed tracing data.
+
+**In TravelShaper's code:**
+
+```python
+# agent.py — both layers initialized together
+from phoenix.otel import register                          # Layer 1: OTLP transport
+from openinference.instrumentation.langchain import LangChainInstrumentor  # Layer 2: semantic conventions
+
+tracer_provider = register(project_name="travelshaper", endpoint=endpoint)
+LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+```
+
+Custom spans in `api.py` also set OpenInference standard attributes (`SpanAttributes.INPUT_VALUE`, `SpanAttributes.OUTPUT_VALUE`) so the request-level span renders properly in Phoenix's UI columns alongside the auto-instrumented LangChain spans.
+
+**Analogy:** OpenTelemetry is like HTTP — it moves data from A to B. OpenInference is like HTML — it gives that data structure and meaning that the receiver (Phoenix) knows how to render.
 
 ---
 
@@ -802,6 +844,29 @@ This architecture is presented in the assessment but not implemented.
 | Compute | Stateless containers scale to zero when idle (ECS Fargate, Cloud Run) |
 | Phoenix | Self-hosted; no per-trace cost |
 
+### 12.4 Observability — Production Path
+
+The local development stack runs Phoenix as a self-hosted container. In production, the observability layer would transition through three stages:
+
+**Stage 1 — Self-hosted Phoenix (current)**
+
+Phoenix runs as a Docker container alongside the application. Traces are stored locally and lost when the container restarts. Acceptable for development and demo.
+
+**Stage 2 — Managed Phoenix with persistent storage**
+
+Phoenix deployed on dedicated infrastructure (ECS task, Kubernetes pod) with a PostgreSQL backend for persistent trace storage. Enables historical analysis and team access. The application code does not change — only the `PHOENIX_COLLECTOR_ENDPOINT` value.
+
+**Stage 3 — Arize Cloud**
+
+Replace self-hosted Phoenix with Arize's managed platform. Benefits:
+- Persistent trace storage with retention policies
+- Team-based access control and collaboration
+- Scheduled evaluations (run frustration/completeness checks on a cron)
+- Drift monitoring and alerting on evaluation metrics
+- Integration with CI/CD for pre-deployment evaluation gates
+
+The transition requires only changing the OTLP endpoint and adding an Arize API key — no application code changes. This is possible because the instrumentation uses standard OpenTelemetry (transport) with OpenInference (semantic conventions), both of which Arize Cloud natively supports.
+
 ---
 
 ## 13. Security Considerations
@@ -945,6 +1010,7 @@ Each phase is additive. The current graph, tools, and API surface remain stable 
 | Span | A single unit of work in a trace (one LLM call, one tool execution) |
 | Trace | An end-to-end record of a user request, composed of multiple spans |
 | Phoenix | Arize's open-source observability platform for LLM applications |
-| OpenInference | The semantic convention for LLM observability spans, built on OpenTelemetry |
+| OpenInference | An open-source semantic convention (created by Arize) that defines what attributes LLM spans carry — input.value, output.value, llm.model_name, token counts, tool metadata. This is the layer that makes Phoenix's purpose-built LLM UI possible. See Section 7.5 for details. |
 | SerpAPI | A web API that returns structured Google search results (flights, hotels, general search) |
-| OTEL / OTLP | OpenTelemetry / OpenTelemetry Protocol — the standard for exporting traces |
+| OTEL / OTLP | OpenTelemetry / OpenTelemetry Protocol — the vendor-neutral standard for collecting and exporting telemetry data (traces, metrics, logs). Acts as the transport layer; agnostic to what the spans contain. |
+| Arize Cloud | Arize's managed observability platform — a production-grade hosted alternative to self-hosted Phoenix, with persistent storage, team access, scheduled evaluations, and drift monitoring. See Section 12.4. |

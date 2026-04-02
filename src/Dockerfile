@@ -26,6 +26,7 @@ RUN poetry config virtualenvs.create false \
 RUN pip install --no-cache-dir \
     arize-phoenix-otel \
     openinference-instrumentation-langchain \
+    openinference-semantic-conventions \
     openai
 
 # Copy application code
