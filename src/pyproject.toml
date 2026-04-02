@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "se-interview"
-version = "0.2.0"
+version = "0.3.0"
 description = "A simple LangGraph agent with web search capability"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"

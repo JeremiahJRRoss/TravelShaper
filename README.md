@@ -380,7 +380,7 @@ Open `.env` and add your keys:
 ```
 OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
-PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 ```
 
 Tests do **not** need API keys — all external calls are mocked. The keys are only required for running the live server, traces, and evaluations.

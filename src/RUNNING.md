@@ -74,10 +74,10 @@ Open `.env` and fill in your keys:
 ```
 OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
-PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 ```
 
-`PHOENIX_COLLECTOR_ENDPOINT` is only needed if you are running the Phoenix
+`PHOENIX_ENDPOINT` is only needed if you are running the Phoenix
 tracing stack. Leave the default value — it will be ignored if Phoenix is
 not running.
 

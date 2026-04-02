@@ -18,7 +18,7 @@ from phoenix.client import Client
 
 def export_spans(project_name: str = "travelshaper") -> None:
     """Fetch spans from Phoenix and write to CSV."""
-    phoenix_url = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces")
+    phoenix_url = os.environ.get("PHOENIX_ENDPOINT", "http://localhost:6006/v1/traces")
     phoenix_base = phoenix_url.replace("/v1/traces", "")
 
     client = Client(base_url=phoenix_base)

@@ -330,9 +330,9 @@ Phoenix is initialized at application startup before the agent is built. The Lan
 from phoenix.otel import register
 from openinference.instrumentation.langchain import LangChainInstrumentor
 
-import os
-endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces")
-tracer_provider = register(project_name="travelshaper", endpoint=endpoint)
+from otel_routing import build_tracer_provider
+
+tracer_provider = build_tracer_provider()  # reads OTEL_DESTINATION from .env
 LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
 ```
 
@@ -854,7 +854,7 @@ Phoenix runs as a Docker container alongside the application. Traces are stored 
 
 **Stage 2 — Managed Phoenix with persistent storage**
 
-Phoenix deployed on dedicated infrastructure (ECS task, Kubernetes pod) with a PostgreSQL backend for persistent trace storage. Enables historical analysis and team access. The application code does not change — only the `PHOENIX_COLLECTOR_ENDPOINT` value.
+Phoenix deployed on dedicated infrastructure (ECS task, Kubernetes pod) with a PostgreSQL backend for persistent trace storage. Enables historical analysis and team access. The application code does not change — only the `PHOENIX_ENDPOINT` value in `.env`.
 
 **Stage 3 — Arize Cloud**
 
