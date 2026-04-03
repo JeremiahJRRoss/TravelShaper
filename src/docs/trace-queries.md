@@ -1,4 +1,4 @@
-# Trace Queries — 10 Queries for Phoenix Tracing
+# Trace Queries — 11 Queries for Phoenix Tracing
 
 **Run these after starting both TravelShaper and Phoenix.**  
 Each query uses the full JSON schema — `departure`, `destination`, and `preferences` fields included — exactly as the browser UI submits them. This exercises place validation, voice routing, and all four tools.
@@ -8,6 +8,8 @@ Run the whole set in one shot:
 python -m traces.run_traces
 ```
 Or paste individual queries below. Traces appear at `http://localhost:6006` within seconds.
+
+All dates are computed dynamically relative to today in `traces/run_traces.py`, so the script never goes stale. The curl examples below use placeholder dates for readability.
 
 ---
 
@@ -119,7 +121,7 @@ curl -s -X POST http://localhost:8000/chat \
   -d '{
     "message": "I am already booked on a flight to Bangkok, Thailand. I need budget hotel options only — check-in January 5 2027, check-out January 12 2027. Save money mode. No flights, no cultural guide, just hotels.",
     "destination": "Bangkok, Thailand",
-    "preferences": "I need AC that actually works and a bathroom I am not scared of. That is the full list of requirements."
+    "preferences": "I would like a safe, clean, trip that focuses on learning about the religious history in the region"
   }'
 ```
 
@@ -173,6 +175,23 @@ curl -s -X POST http://localhost:8000/chat \
 
 ---
 
+## Query 11 — Past dates, error handling test
+**Expected behavior:** Agent should reject or warn about past departure dates  
+**Special test:** Validates graceful handling of impossible travel dates
+
+```bash
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "I am planning a trip departing from Boston, MA (please identify the nearest major international airport). Destination: Paris, France. Departure: 2026-03-01. Return: 2026-03-08 (7 days). Budget preference: save money. Please provide flight and hotel options.",
+    "departure": "Boston, MA",
+    "destination": "Paris, France",
+    "preferences": "This is a test with past dates — the system should handle this gracefully."
+  }'
+```
+
+---
+
 ## Coverage matrix
 
 | # | Flights | Hotels | Cultural | Web | Budget | Interests | Special test |
@@ -187,5 +206,6 @@ curl -s -X POST http://localhost:8000/chat \
 | 8 | ✓ | ✓ | ✓ | ✓ | Full | Nature, Fitness | Long-haul southern hemisphere |
 | 9 | | | | ✓ | | | Vague/open-ended — agent chooses |
 | 10 | ✓ | ✓ | | ✓ | Full | Nightlife, Food | Domestic — no cultural guide |
+| 11 | ✓ | ✓ | | | Save | | Past dates — error handling |
 
-**Covers:** all 4 tools individually and in combination · both budget voices · place auto-correction · missing origin/dates · already-at-destination · vague open-ended · domestic vs. international · 5 of 6 interest categories
+**Covers:** all 4 tools individually and in combination · both budget voices · place auto-correction · missing origin/dates · already-at-destination · vague open-ended · domestic vs. international · past-date error handling · 5 of 6 interest categories
