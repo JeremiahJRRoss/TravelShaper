@@ -1,7 +1,7 @@
 # Test Specification — TravelShaper Travel Assistant
 
 **Version:** 2.1 (v0.3.2)  
-**Total tests:** 25 passing  
+**Total tests:** 26 passing  
 **Every test uses mocked external calls.** No test requires a live API key.
 
 ---
@@ -129,7 +129,7 @@ Assertion: 200 response; agent called.
 
 ---
 
-## tests/test_otel_routing.py (7 tests)
+## tests/test_otel_routing.py (8 tests)
 
 All tests mock `OTLPSpanExporter` and use `patch.dict(os.environ)` to control
 environment variables. No live OTel endpoints are required.
@@ -159,7 +159,12 @@ Assertion: `OTLPSpanExporter` never called (Arize skipped due to missing creds).
 Sets `PHOENIX_API_KEY=my-cloud-key` alongside Phoenix endpoint.
 Assertion: exporter headers contain `authorization: Bearer my-cloud-key`.
 
-### Test 25 — test_phoenix_no_api_key_sends_no_auth_header
+### Test 25 — test_project_name_sets_service_name
+Sets `OTEL_DESTINATION=none` and `OTEL_PROJECT_NAME=my-custom-project`.
+Calls `build_tracer_provider()` and inspects the provider's resource attributes.
+Assertion: `provider.resource.attributes.get("service.name") == "my-custom-project"`.
+
+### Test 26 — test_phoenix_no_api_key_sends_no_auth_header
 Sets Phoenix endpoint without a `PHOENIX_API_KEY`.
 Assertion: exporter headers do not contain an `authorization` key.
 
@@ -172,4 +177,4 @@ cd src
 pytest tests/ -v
 ```
 
-Expected output: `25 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).
+Expected output: `26 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).

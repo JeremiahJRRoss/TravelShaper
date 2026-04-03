@@ -104,7 +104,7 @@ src/
 │   ├── test_tools.py          # 4 tool tests
 │   ├── test_agent.py          # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py            # 8 API + validation tests
-│   └── test_otel_routing.py   # 7 OTel routing tests
+│   └── test_otel_routing.py   # 8 OTel routing tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile                   # Build/test/demo automation
@@ -157,7 +157,7 @@ The extension adds three new tools to the registry. The graph structure itself d
 
 **otel_routing.py — Telemetry configuration**
 
-Owns all OpenTelemetry configuration. Reads `OTEL_DESTINATION` from `.env` and builds a `TracerProvider` with the appropriate OTLP exporters attached.
+Owns all OpenTelemetry configuration. Reads `OTEL_DESTINATION` from `.env` and builds a `TracerProvider` with a `Resource` whose `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`) and the appropriate OTLP exporters attached.
 
 Valid values for `OTEL_DESTINATION`:
 - `phoenix` — sends traces to local Phoenix or Phoenix Cloud
@@ -347,7 +347,7 @@ Phoenix was the original choice (required by the assessment). In v0.3.0, observa
 
 ### 7.1 Instrumentation
 
-Telemetry is initialized at application startup before the agent is built. The `otel_routing` module reads `OTEL_DESTINATION` from `.env` and builds a `TracerProvider` with the appropriate OTLP exporters. The LangChain/LangGraph instrumentor adds OpenInference semantic attributes to every span.
+Telemetry is initialized at application startup before the agent is built. The `otel_routing` module reads `OTEL_DESTINATION` from `.env` and builds a `TracerProvider` with a `Resource` whose `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`) and the appropriate OTLP exporters. The LangChain/LangGraph instrumentor adds OpenInference semantic attributes to every span.
 
 ```python
 from otel_routing import build_tracer_provider
@@ -414,7 +414,7 @@ TravelShaper's observability stack has two distinct layers that work together:
 **OpenTelemetry (OTLP) — The Transport Layer**
 
 OpenTelemetry is a vendor-neutral standard for collecting and exporting telemetry data (traces, metrics, logs). In TravelShaper:
-- `otel_routing.build_tracer_provider()` configures a `TracerProvider` with `BatchSpanProcessor` and `OTLPSpanExporter` targeting the configured destinations
+- `otel_routing.build_tracer_provider()` configures a `TracerProvider` with a `Resource` (`service.name` from `OTEL_PROJECT_NAME`), `BatchSpanProcessor`, and `OTLPSpanExporter` targeting the configured destinations
 - Every span carries a trace ID, parent ID, start/end timestamps, and arbitrary attributes
 - The transport is agnostic — it works identically whether the destination is Phoenix, Jaeger, Datadog, or Arize Cloud
 
@@ -727,7 +727,7 @@ All transitions require only `.env` changes — no application code modification
 | Tool schema tests | test_tools.py | 4 | Input types, output format, docstring presence | Mocked |
 | Agent graph tests | test_agent.py | 6 | Nodes, edges, routing, dispatch vs synthesis phase | Mocked |
 | API endpoint tests | test_api.py | 8 | HTTP status codes, response shapes, validation pipeline | Mocked |
-| OTel routing tests | test_otel_routing.py | 7 | Exporter creation, credential handling, destination selection | Mocked |
+| OTel routing tests | test_otel_routing.py | 8 | Exporter creation, credential handling, destination selection, project name | Mocked |
 | Integration tests (manual) | — | — | Full request with live APIs during demo | Live |
 
 ### 14.2 Mocking approach
@@ -737,7 +737,7 @@ Tests use `unittest.mock.patch` to replace external API calls. OTel routing test
 ### 14.3 Test execution
 
 ```bash
-pytest tests/ -v    # 25 passed
+pytest tests/ -v    # 26 passed
 ```
 
 ---
