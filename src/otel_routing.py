@@ -16,6 +16,7 @@ import sys
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
 
 
 def _destination() -> str:
@@ -64,7 +65,9 @@ def build_tracer_provider() -> TracerProvider:
     all credentials are missing.
     """
     dest     = _destination()
-    provider = TracerProvider()
+    provider = TracerProvider(
+        resource=Resource({"service.name": os.getenv("OTEL_PROJECT_NAME", "travelshaper")})
+    )
 
     if dest == "none":
         print("[otel] Telemetry disabled (OTEL_DESTINATION=none)")
