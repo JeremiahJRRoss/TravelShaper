@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from dotenv import load_dotenv
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
@@ -94,8 +94,31 @@ Rules:
 4. End with one unforgettable line.
 """
 
-def get_system_prompt(message: str) -> str:
-    """Return the correct system prompt based on budget preference in the message."""
+DISPATCH_PROMPT = """\
+You are TravelShaper. Your only job right now is to decide which tools to call.
+
+Tool usage:
+- search_flights: when user has origin + destination + dates. Convert city
+  names to IATA codes. Dates must be YYYY-MM-DD.
+- search_hotels: when user wants accommodation. sort_by=3 for budget,
+  sort_by=13 for full experience.
+- get_cultural_guide: for every international destination.
+- duckduckgo_search: for interest-based discovery or when other tools
+  are not applicable.
+
+Call all relevant tools in a single turn. Do not respond to the user yet.
+"""
+
+def get_system_prompt(message: str, phase: str = "synthesis") -> str:
+    """Return the correct system prompt based on phase and budget preference.
+
+    phase="dispatch"  — minimal tool-routing prompt, sent on first llm_call
+                        before any tools have run
+    phase="synthesis" — full voice + structure prompt, sent when writing
+                        the final response after tools have returned results
+    """
+    if phase == "dispatch":
+        return DISPATCH_PROMPT
     lower = message.lower()
     if "save money" in lower or "budget" in lower or "cheapest" in lower or "spend as little" in lower:
         return SYSTEM_PROMPT_SAVE_MONEY
@@ -140,14 +163,22 @@ class MessagesState(TypedDict):
 # Graph nodes
 # ---------------------------------------------------------------------------
 def llm_call(state: MessagesState) -> dict:
-    """Invoke the model with the appropriate voice-matched system prompt."""
-    # Determine which voice to use based on the user's budget preference
+    """Invoke the model with the appropriate system prompt for the current phase.
+
+    Phase detection: if the last message in state is a ToolMessage, tools
+    have just run and we are in the synthesis phase — write the response.
+    Otherwise we are in the dispatch phase — decide which tools to call.
+    """
+    last_message = state["messages"][-1] if state["messages"] else None
+    is_synthesis = isinstance(last_message, ToolMessage)
+    phase = "synthesis" if is_synthesis else "dispatch"
+
     last_human = next(
         (m.content for m in reversed(state["messages"])
-         if hasattr(m, "content") and isinstance(m.content, str)),
+         if isinstance(m, HumanMessage) and isinstance(m.content, str)),
         ""
     )
-    system_prompt = get_system_prompt(last_human)
+    system_prompt = get_system_prompt(last_human, phase=phase)
 
     response = model_with_tools.invoke(
         [SystemMessage(content=system_prompt)] + state["messages"]

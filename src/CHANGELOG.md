@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.2] — 2026-04-02
+
+### Token reduction (PR 2 of 2)
+
+- Added DISPATCH_PROMPT (~150 tokens) for tool-dispatch phase
+- llm_call now detects phase from message state: sends DISPATCH_PROMPT
+  before tools run, voice prompt after tools return results
+- Updated get_system_prompt to accept phase parameter (default: synthesis)
+- Added 2 unit tests for phase detection in llm_call (25 total)
+- Estimated additional savings: ~300–600 tokens per full-trip request
+- Bumped version 0.3.1 → 0.3.2
+
 ## [0.3.1] — 2026-04-03
 
 ### Token reduction (part 1 of 2)

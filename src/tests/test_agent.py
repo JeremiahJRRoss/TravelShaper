@@ -7,7 +7,15 @@ LLM or API calls.
 
 import pytest
 
-from agent import build_agent, get_system_prompt, tools, tools_by_name
+from agent import (
+    build_agent,
+    get_system_prompt,
+    tools,
+    tools_by_name,
+    DISPATCH_PROMPT,
+    SYSTEM_PROMPT_SAVE_MONEY,
+    llm_call,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -64,9 +72,10 @@ def test_cultural_guide_tool_has_routing_docstring() -> None:
 # ---------------------------------------------------------------------------
 
 def test_voice_routing_selects_correct_prompt() -> None:
-    """get_system_prompt must route 'save money' to budget voice and default to full experience."""
-    budget_prompt = get_system_prompt("I want to save money on this trip")
-    full_prompt = get_system_prompt("Give me the full experience")
+    """get_system_prompt must route correctly by phase and budget keyword."""
+    # Synthesis phase — existing behavior preserved via default argument
+    budget_prompt  = get_system_prompt("I want to save money on this trip")
+    full_prompt    = get_system_prompt("Give me the full experience")
     default_prompt = get_system_prompt("Plan a trip to Tokyo")
 
     assert "Bourdain" in budget_prompt or "Billy Dee" in budget_prompt, (
@@ -75,7 +84,79 @@ def test_voice_routing_selects_correct_prompt() -> None:
     assert "Robin Leach" in full_prompt or "Pharrell" in full_prompt or "Rushdie" in full_prompt, (
         "Full experience should activate the luxury voice"
     )
-    # Default (no budget keyword) should be full experience
     assert full_prompt == default_prompt, (
         "Default (no budget keyword) should select the full-experience prompt"
+    )
+
+    # Dispatch phase — always returns DISPATCH_PROMPT regardless of budget keyword
+    dispatch_save = get_system_prompt("I want to save money", phase="dispatch")
+    dispatch_full = get_system_prompt("Full experience please", phase="dispatch")
+
+    assert dispatch_save == dispatch_full, (
+        "Dispatch phase should return the same prompt regardless of budget keyword"
+    )
+    assert "IATA" in dispatch_save, (
+        "Dispatch prompt should contain tool routing instructions"
+    )
+    assert "Bourdain" not in dispatch_save, (
+        "Dispatch prompt must not contain voice instructions"
+    )
+
+
+def test_llm_call_uses_dispatch_prompt_before_tools() -> None:
+    """llm_call must send DISPATCH_PROMPT when no tools have run yet."""
+    from unittest.mock import patch, MagicMock
+    from langchain_core.messages import HumanMessage
+
+    state = {"messages": [HumanMessage(content="Plan a trip to Tokyo, save money")]}
+
+    captured_prompt = {}
+
+    def fake_invoke(messages):
+        # First message is always the SystemMessage
+        captured_prompt["content"] = messages[0].content
+        mock_response = MagicMock()
+        mock_response.tool_calls = []
+        mock_response.content = "response"
+        return mock_response
+
+    with patch("agent.model_with_tools") as mock_model:
+        mock_model.invoke.side_effect = fake_invoke
+        llm_call(state)
+
+    assert captured_prompt["content"] == DISPATCH_PROMPT, (
+        "First llm_call (no prior ToolMessage) should use DISPATCH_PROMPT"
+    )
+
+
+def test_llm_call_uses_synthesis_prompt_after_tools() -> None:
+    """llm_call must send a voice prompt when the last message is a ToolMessage."""
+    from unittest.mock import patch, MagicMock
+    from langchain_core.messages import HumanMessage, ToolMessage
+
+    state = {
+        "messages": [
+            HumanMessage(content="Plan a trip to Tokyo, save money"),
+            ToolMessage(content="Flight results...", tool_call_id="abc123"),
+        ]
+    }
+
+    captured_prompt = {}
+
+    def fake_invoke(messages):
+        captured_prompt["content"] = messages[0].content
+        mock_response = MagicMock()
+        mock_response.tool_calls = []
+        mock_response.content = "response"
+        return mock_response
+
+    with patch("agent.model_with_tools") as mock_model:
+        mock_model.invoke.side_effect = fake_invoke
+        llm_call(state)
+
+    assert captured_prompt["content"] != DISPATCH_PROMPT, (
+        "llm_call after ToolMessage should NOT use DISPATCH_PROMPT"
+    )
+    assert captured_prompt["content"] == SYSTEM_PROMPT_SAVE_MONEY, (
+        "llm_call after ToolMessage with budget keyword should use SYSTEM_PROMPT_SAVE_MONEY"
     )
