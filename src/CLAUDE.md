@@ -21,7 +21,7 @@ module driven by OTEL_DESTINATION in .env.
 Valid values: phoenix | arize | both | none
 
 ## Do not touch
-- tools/           — no changes needed
+- tools/           — output truncation only, do not touch routing or API logic
 - tests/           — add tests only, never delete
 - static/          — no changes needed
 

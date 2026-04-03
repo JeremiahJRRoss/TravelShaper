@@ -39,7 +39,7 @@ agent = build_agent()
 app = FastAPI(
     title="TravelShaper API",
     description="AI travel planning assistant — LangGraph agent with flight, hotel, and cultural guide tools.",
-    version="0.1.4",
+    version="0.1.5",
 )
 
 _openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -176,9 +176,9 @@ class PlaceValidationResult(BaseModel):
 
 
 def _llm_json(system: str, user: str, max_tokens: int = 120) -> dict:
-    """Call gpt-4o and parse a JSON response. Raises on failure."""
+    """Call gpt-4o-mini and parse a JSON response. Raises on failure."""
     completion = _openai.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         temperature=0,
         max_tokens=max_tokens,
         messages=[
@@ -193,7 +193,7 @@ def _llm_json(system: str, user: str, max_tokens: int = 120) -> dict:
 
 
 def validate_preferences(text: str) -> ValidationResult:
-    """Classify whether user preference text is safe using gpt-4o."""
+    """Classify whether user preference text is safe using gpt-4o-mini."""
     try:
         data = _llm_json(PREFERENCES_VALIDATION_PROMPT, text, max_tokens=80)
         return ValidationResult(valid=bool(data["valid"]), reason=str(data.get("reason", "")))
@@ -203,7 +203,7 @@ def validate_preferences(text: str) -> ValidationResult:
 
 
 def validate_place(name: str, field: str) -> PlaceValidationResult:
-    """Validate and normalise a place name using gpt-4o.
+    """Validate and normalise a place name using gpt-4o-mini.
 
     Returns a PlaceValidationResult with:
       - valid=True  → place is real; canonical is the normalised name;

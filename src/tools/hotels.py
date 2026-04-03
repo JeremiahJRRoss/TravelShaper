@@ -60,7 +60,7 @@ class HotelSearchResult(BaseModel):
             "",
         ]
 
-        for prop in self.properties[:5]:
+        for prop in self.properties[:3]:
             lines.append(prop.to_string())
             lines.append("")
 
@@ -164,7 +164,7 @@ def search_hotels(
         check_in_date=check_in_date,
         check_out_date=check_out_date,
         sort_by=sort_by,
-        properties=[_parse_property(p) for p in properties[:5]],
+        properties=[_parse_property(p) for p in properties[:3]],
     )
 
     return result.to_agent_string()

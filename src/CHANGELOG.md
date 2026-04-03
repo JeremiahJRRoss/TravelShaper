@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1] — 2026-04-03
+
+### Token reduction (part 1 of 2)
+
+- Condensed both system prompts (~90 lines each → ~20 lines)
+- Switched `_llm_json` validation model from `gpt-4o` to `gpt-4o-mini`
+- Reduced hotel results from 5 to 3 per search
+- Bumped API version `0.1.4` → `0.1.5`
+- Updated CLAUDE.md tools/ policy
+
 ## [0.3.0] — 2026-04-02
 
 ### Configurable OTel routing
