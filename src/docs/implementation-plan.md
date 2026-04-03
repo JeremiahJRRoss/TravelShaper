@@ -71,15 +71,13 @@ Replace agent.py entirely. This is the most important file in the project.
 The new agent.py must:
 1. Import `load_dotenv` and call it first
 2. Import all 4 tools: `search_flights`, `search_hotels`, `get_cultural_guide`, `DuckDuckGoSearchRun`
-3. Include the Phoenix instrumentation block (wrapped in try/except ImportError):
+3. Include the OTel instrumentation block (wrapped in try/except ImportError):
 ```python
 try:
-    import os as _os
-    from phoenix.otel import register
+    from otel_routing import build_tracer_provider
     from openinference.instrumentation.langchain import LangChainInstrumentor
-    endpoint = _os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006/v1/traces")
-    tracer_provider = register(project_name="travelshaper", endpoint=endpoint)
-    LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+    _tracer_provider = build_tracer_provider()
+    LangChainInstrumentor().instrument(tracer_provider=_tracer_provider)
 except ImportError:
     pass
 ```

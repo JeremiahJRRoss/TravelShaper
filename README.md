@@ -113,7 +113,6 @@ OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 
 # Arize Cloud (optional — only needed if OTEL_DESTINATION=arize or both)
-# ARIZE_ENDPOINT=https://otlp.arize.com/v1
 # ARIZE_API_KEY=
 # ARIZE_SPACE_ID=
 ```
@@ -332,7 +331,7 @@ PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 
 Tests do **not** need API keys — all external calls are mocked.
 
-### 4. Run all 26 tests
+### 4. Run all 27 tests
 
 ```bash
 pytest tests/ -v
@@ -360,15 +359,16 @@ tests/test_api.py::test_chat_accepts_valid_places                 PASSED
 tests/test_api.py::test_chat_rejects_invalid_place                PASSED
 tests/test_api.py::test_chat_auto_corrects_misspelled_place       PASSED
 tests/test_otel_routing.py::test_phoenix_destination_creates_one_exporter  PASSED
-tests/test_otel_routing.py::test_arize_destination_creates_one_exporter    PASSED
-tests/test_otel_routing.py::test_both_destination_creates_two_exporters    PASSED
-tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
-tests/test_otel_routing.py::test_arize_missing_credentials_skips_silently  PASSED
 tests/test_otel_routing.py::test_phoenix_api_key_added_to_headers_when_present PASSED
-tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_phoenix_no_api_key_sends_no_auth_header   PASSED
+tests/test_otel_routing.py::test_arize_destination_calls_arize_register    PASSED
+tests/test_otel_routing.py::test_arize_missing_credentials_skips_silently  PASSED
+tests/test_otel_routing.py::test_both_destination_uses_arize_and_phoenix   PASSED
+tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
+tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
+tests/test_otel_routing.py::test_default_project_name_is_travelshaper      PASSED
 
-26 passed
+27 passed
 ```
 
 You can also run individual test files:
@@ -377,7 +377,7 @@ You can also run individual test files:
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 8 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 9 OTel routing tests
 ```
 
 A deprecation warning about `temperature` in `model_kwargs` is expected and harmless.
@@ -450,7 +450,7 @@ src/
 │   ├── test_tools.py               # 4 tool tests
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 8 OTel routing tests
+│   └── test_otel_routing.py        # 9 OTel routing tests
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRD.md
@@ -534,13 +534,13 @@ TravelShaper uses configurable OTel routing controlled by `OTEL_DESTINATION` in 
 | Value | Destination | Required env vars |
 |-------|-------------|-------------------|
 | `phoenix` (default) | Local Phoenix or Phoenix Cloud | `PHOENIX_ENDPOINT`; optionally `PHOENIX_API_KEY` for Cloud |
-| `arize` | Arize Cloud | `ARIZE_ENDPOINT`, `ARIZE_API_KEY`, `ARIZE_SPACE_ID` |
+| `arize` | Arize Cloud | `ARIZE_API_KEY`, `ARIZE_SPACE_ID` |
 | `both` | Phoenix and Arize simultaneously | All of the above |
 | `none` | Disabled — no traces sent | None |
 
 Set `OTEL_PROJECT_NAME` to control the project name in Phoenix/Arize dashboards (default: `travelshaper`).
 
-The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider` with the appropriate OTLP exporters. The `TracerProvider` is created with a `Resource` whose `service.name` is set from the `OTEL_PROJECT_NAME` environment variable (default: `travelshaper`), ensuring traces land in the correct project in Phoenix and Arize dashboards. If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`). If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
 
 ---
 

@@ -7,7 +7,6 @@ services:
     environment:
       - OTEL_DESTINATION=${OTEL_DESTINATION:-phoenix}
       - PHOENIX_ENDPOINT=http://phoenix:6006/v1/traces
-      - ARIZE_ENDPOINT=${ARIZE_ENDPOINT:-}
       - ARIZE_API_KEY=${ARIZE_API_KEY:-}
       - ARIZE_SPACE_ID=${ARIZE_SPACE_ID:-}
     restart: unless-stopped
