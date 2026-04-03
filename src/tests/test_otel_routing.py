@@ -92,6 +92,13 @@ def test_phoenix_api_key_added_to_headers_when_present(mock_exporter):
     assert headers.get("authorization") == "Bearer my-cloud-key"
 
 
+def test_project_name_sets_service_name():
+    env = {"OTEL_DESTINATION": "none", "OTEL_PROJECT_NAME": "my-custom-project"}
+    with patch.dict(os.environ, env, clear=False):
+        provider = build_tracer_provider()
+    assert provider.resource.attributes.get("service.name") == "my-custom-project"
+
+
 @patch("otel_routing.OTLPSpanExporter")
 def test_phoenix_no_api_key_sends_no_auth_header(mock_exporter):
     mock_exporter.return_value = MagicMock()
