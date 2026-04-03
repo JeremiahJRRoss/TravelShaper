@@ -100,6 +100,23 @@ def test_project_name_sets_service_name():
 
 
 @patch("otel_routing.OTLPSpanExporter")
+def test_arize_headers_use_bearer_prefix_and_underscore(mock_exporter):
+    mock_exporter.return_value = MagicMock()
+    env = {
+        "OTEL_DESTINATION": "arize",
+        "ARIZE_ENDPOINT":   "https://otlp.arize.com/v1",
+        "ARIZE_API_KEY":    "test-key",
+        "ARIZE_SPACE_ID":   "test-space",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        build_tracer_provider()
+    headers = mock_exporter.call_args.kwargs.get("headers", {})
+    assert headers.get("authorization") == "Bearer test-key"
+    assert "space_id" in headers
+    assert "space-id" not in headers
+
+
+@patch("otel_routing.OTLPSpanExporter")
 def test_phoenix_no_api_key_sends_no_auth_header(mock_exporter):
     mock_exporter.return_value = MagicMock()
     env = {

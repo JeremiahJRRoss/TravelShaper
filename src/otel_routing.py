@@ -44,8 +44,8 @@ def _arize_exporter() -> OTLPSpanExporter | None:
     return OTLPSpanExporter(
         endpoint=endpoint,
         headers={
-            "authorization": api_key,
-            "space-id":      space_id,
+            "authorization": f"Bearer {api_key}",
+            "space_id":      space_id,
         },
     )
 
