@@ -29,7 +29,8 @@ RUN pip install --no-cache-dir \
     openinference-semantic-conventions \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-http \
-    openai
+    openai \
+    arize-otel
 
 # Copy application code
 COPY . .
