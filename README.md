@@ -106,6 +106,9 @@ SERPAPI_API_KEY=...
 # Options: phoenix | arize | both | none
 OTEL_DESTINATION=phoenix
 
+# Project name in Phoenix/Arize dashboards
+OTEL_PROJECT_NAME=travelshaper
+
 # Local Phoenix (default)
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 
@@ -323,12 +326,13 @@ Open `.env` and add your keys:
 OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
 OTEL_DESTINATION=phoenix
+OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 ```
 
 Tests do **not** need API keys — all external calls are mocked.
 
-### 4. Run all 25 tests
+### 4. Run all 26 tests
 
 ```bash
 pytest tests/ -v
@@ -361,9 +365,10 @@ tests/test_otel_routing.py::test_both_destination_creates_two_exporters    PASSE
 tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
 tests/test_otel_routing.py::test_arize_missing_credentials_skips_silently  PASSED
 tests/test_otel_routing.py::test_phoenix_api_key_added_to_headers_when_present PASSED
+tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_phoenix_no_api_key_sends_no_auth_header   PASSED
 
-25 passed
+26 passed
 ```
 
 You can also run individual test files:
@@ -372,7 +377,7 @@ You can also run individual test files:
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 7 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 8 OTel routing tests
 ```
 
 A deprecation warning about `temperature` in `model_kwargs` is expected and harmless.
@@ -445,7 +450,7 @@ src/
 │   ├── test_tools.py               # 4 tool tests
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 7 OTel routing tests
+│   └── test_otel_routing.py        # 8 OTel routing tests
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRD.md
@@ -475,7 +480,7 @@ The `docs/` directory contains the full design record for the project. Each docu
 | [ARCHITECTURE.md](src/docs/ARCHITECTURE.md) | Software architecture document covering component design, data flow, LLM decision making, system prompt rationale, tool design patterns, input validation architecture, OTel routing, deployment topology, and the decision log. |
 | [PRD.md](src/docs/PRD.md) | Product requirements document defining the target user, jobs to be done, functional and non-functional requirements, scope boundaries, API contract, and evaluation criteria. |
 | [system-prompt-spec.md](src/docs/system-prompt-spec.md) | Specification for the three system prompts (dispatch, save-money, full-experience) including voice definitions, phase-based routing logic, and design reasoning. |
-| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 25 tests across four test files, including mock path rules, exact mock data shapes, and assertion criteria. |
+| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 26 tests across four test files, including mock path rules, exact mock data shapes, and assertion criteria. |
 | [docker-spec.md](src/docs/docker-spec.md) | Dockerfile and docker-compose.yml with line-by-line commentary, including why OTel packages are installed via pip and why Phoenix uses Docker profiles. |
 | [evaluation-prompts.md](src/docs/evaluation-prompts.md) | The exact prompts used in the Phoenix evaluation pipeline for all three metrics, with rationale for why each metric was chosen. |
 | [trace-queries.md](src/docs/trace-queries.md) | All 11 trace queries with their expected tool dispatch, voice routing, and a coverage matrix. |
@@ -533,7 +538,9 @@ TravelShaper uses configurable OTel routing controlled by `OTEL_DESTINATION` in 
 | `both` | Phoenix and Arize simultaneously | All of the above |
 | `none` | Disabled — no traces sent | None |
 
-The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider` with the appropriate OTLP exporters. If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+Set `OTEL_PROJECT_NAME` to control the project name in Phoenix/Arize dashboards (default: `travelshaper`).
+
+The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider` with the appropriate OTLP exporters. The `TracerProvider` is created with a `Resource` whose `service.name` is set from the `OTEL_PROJECT_NAME` environment variable (default: `travelshaper`), ensuring traces land in the correct project in Phoenix and Arize dashboards. If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
 
 ---
 

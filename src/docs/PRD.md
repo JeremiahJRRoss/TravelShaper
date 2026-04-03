@@ -327,19 +327,19 @@ Assess whether the response covers everything the user asked for, with scope awa
 
 ## 11. Testing Requirements
 
-### 11.1 Unit tests (25 implemented)
+### 11.1 Unit tests (26 implemented)
 
 | File | Count | What it validates |
 |------|-------|-------------------|
 | test_tools.py | 4 | Tool input/output format, empty result handling |
 | test_agent.py | 6 | Graph structure, tool registration, voice routing, dispatch phase detection |
 | test_api.py | 8 | HTTP endpoints, place validation, preference validation |
-| test_otel_routing.py | 7 | OTel destination selection, credential handling, exporter creation |
+| test_otel_routing.py | 8 | OTel destination selection, credential handling, exporter creation, project name |
 
 ### 11.2 Test execution
 
 ```bash
-pytest tests/ -v    # 25 passed
+pytest tests/ -v    # 26 passed
 ```
 
 All tests pass without requiring external API keys.

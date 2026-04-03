@@ -107,7 +107,7 @@ docker run -p 8000:8000 --env-file .env travelshaper
 
 ## 3. Running the Tests
 
-### All 25 tests (recommended)
+### All 26 tests (recommended)
 
 ```bash
 pytest tests/ -v
@@ -140,9 +140,10 @@ tests/test_otel_routing.py::test_both_destination_creates_two_exporters    PASSE
 tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
 tests/test_otel_routing.py::test_arize_missing_credentials_skips_silently  PASSED
 tests/test_otel_routing.py::test_phoenix_api_key_added_to_headers_when_present PASSED
+tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_phoenix_no_api_key_sends_no_auth_header   PASSED
 
-25 passed
+26 passed
 ```
 
 > **No API keys are required to run tests.** All external calls are mocked.
@@ -153,7 +154,7 @@ tests/test_otel_routing.py::test_phoenix_no_api_key_sends_no_auth_header   PASSE
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 7 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 8 OTel routing tests
 ```
 
 ### Run a single test by name
@@ -231,7 +232,7 @@ src/
 │   ├── test_tools.py               # 4 tool unit tests (mocked)
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 7 OTel routing tests
+│   └── test_otel_routing.py        # 8 OTel routing tests
 ├── evaluations/
 │   ├── run_evals.py                # Phoenix evaluation runner — 3 metrics
 │   └── metrics/
