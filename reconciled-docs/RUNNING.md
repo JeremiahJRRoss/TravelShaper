@@ -66,7 +66,12 @@ SERPAPI_API_KEY=...
 
 # Telemetry routing (phoenix | arize | both | none)
 OTEL_DESTINATION=phoenix
+OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
+
+# Arize Cloud (only needed if OTEL_DESTINATION=arize or both)
+# ARIZE_API_KEY=
+# ARIZE_SPACE_ID=
 ```
 
 ---

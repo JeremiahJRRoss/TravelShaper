@@ -138,30 +138,37 @@ environment variables. No live OTel endpoints are required.
 Sets `OTEL_DESTINATION=phoenix` and `PHOENIX_ENDPOINT=http://localhost:6006/v1/traces`.
 Assertions: `OTLPSpanExporter` called exactly once; endpoint contains "localhost:6006".
 
-### Test 20 — test_arize_destination_creates_one_exporter
-Sets `OTEL_DESTINATION=arize` with full Arize credentials (`ARIZE_ENDPOINT`,
-`ARIZE_API_KEY`, `ARIZE_SPACE_ID`).
-Assertions: `OTLPSpanExporter` called exactly once; endpoint contains "arize.com".
-
-### Test 21 — test_both_destination_creates_two_exporters
-Sets `OTEL_DESTINATION=both` with both Phoenix and Arize credentials.
-Assertion: `OTLPSpanExporter` called exactly twice.
-
-### Test 22 — test_none_destination_creates_no_exporters
-Sets `OTEL_DESTINATION=none`.
-Assertion: `OTLPSpanExporter` never called.
-
-### Test 23 — test_arize_missing_credentials_skips_silently
-Sets `OTEL_DESTINATION=arize` with empty credential strings.
-Assertion: `OTLPSpanExporter` never called (Arize skipped due to missing creds).
-
-### Test 24 — test_phoenix_api_key_added_to_headers_when_present
+### Test 20 — test_phoenix_api_key_added_to_headers_when_present
 Sets `PHOENIX_API_KEY=my-cloud-key` alongside Phoenix endpoint.
 Assertion: exporter headers contain `authorization: Bearer my-cloud-key`.
 
-### Test 25 — test_phoenix_no_api_key_sends_no_auth_header
+### Test 21 — test_phoenix_no_api_key_sends_no_auth_header
 Sets Phoenix endpoint without a `PHOENIX_API_KEY`.
 Assertion: exporter headers do not contain an `authorization` key.
+
+### Test 22 — test_arize_destination_calls_arize_register
+Sets `OTEL_DESTINATION=arize`. Mocks `_build_arize_provider` to return a mock provider.
+Assertions: `_build_arize_provider` called once; returned provider matches mock.
+
+### Test 23 — test_arize_missing_credentials_skips_silently
+Sets `OTEL_DESTINATION=arize` with empty `ARIZE_API_KEY` and `ARIZE_SPACE_ID`.
+Assertion: returns a non-None provider without crashing.
+
+### Test 24 — test_both_destination_uses_arize_and_phoenix
+Sets `OTEL_DESTINATION=both` with Phoenix endpoint. Mocks both `_build_arize_provider` and `OTLPSpanExporter`.
+Assertion: `_build_arize_provider` called once; `OTLPSpanExporter` called once.
+
+### Test 25 — test_none_destination_creates_no_exporters
+Sets `OTEL_DESTINATION=none`.
+Assertion: `OTLPSpanExporter` never called.
+
+### Test 26 — test_project_name_sets_service_name
+Sets `OTEL_DESTINATION=none` and `OTEL_PROJECT_NAME=my-custom-project`.
+Assertion: `provider.resource.attributes.get("service.name") == "my-custom-project"`.
+
+### Test 27 — test_default_project_name_is_travelshaper
+Sets `OTEL_DESTINATION=none` without `OTEL_PROJECT_NAME`.
+Assertion: `provider.resource.attributes.get("service.name") == "travelshaper"`.
 
 ---
 
@@ -172,4 +179,4 @@ cd src
 pytest tests/ -v
 ```
 
-Expected output: `25 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).
+Expected output: `27 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).

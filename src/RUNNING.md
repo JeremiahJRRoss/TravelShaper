@@ -74,12 +74,21 @@ Open `.env` and fill in your keys:
 ```
 OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
+
+# Telemetry routing (optional)
+OTEL_DESTINATION=phoenix          # phoenix | arize | both | none
+OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
+
+# Arize Cloud (only needed if OTEL_DESTINATION=arize or both)
+# ARIZE_API_KEY=
+# ARIZE_SPACE_ID=
 ```
 
 `PHOENIX_ENDPOINT` is only needed if you are running the Phoenix
 tracing stack. Leave the default value — it will be ignored if Phoenix is
-not running.
+not running. For Arize Cloud, set `ARIZE_API_KEY` and `ARIZE_SPACE_ID` — the
+endpoint is handled automatically by `arize.otel.register()`.
 
 ---
 

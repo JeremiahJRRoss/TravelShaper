@@ -414,7 +414,7 @@ TravelShaper's observability stack has two distinct layers that work together:
 **OpenTelemetry (OTLP) — The Transport Layer**
 
 OpenTelemetry is a vendor-neutral standard for collecting and exporting telemetry data (traces, metrics, logs). In TravelShaper:
-- `otel_routing.build_tracer_provider()` configures a `TracerProvider` with a `Resource` (`service.name` from `OTEL_PROJECT_NAME`), `BatchSpanProcessor`, and `OTLPSpanExporter` targeting the configured destinations
+- `otel_routing.build_tracer_provider()` configures a `TracerProvider` with a `Resource` (`service.name` from `OTEL_PROJECT_NAME`). For Phoenix, it uses `BatchSpanProcessor` with `OTLPSpanExporter`. For Arize, it uses `arize.otel.register()` which returns a fully configured provider
 - Every span carries a trace ID, parent ID, start/end timestamps, and arbitrary attributes
 - The transport is agnostic — it works identically whether the destination is Phoenix, Jaeger, Datadog, or Arize Cloud
 
@@ -667,7 +667,6 @@ services:
     environment:
       - OTEL_DESTINATION=${OTEL_DESTINATION:-phoenix}
       - PHOENIX_ENDPOINT=http://phoenix:6006/v1/traces
-      - ARIZE_ENDPOINT=${ARIZE_ENDPOINT:-}
       - ARIZE_API_KEY=${ARIZE_API_KEY:-}
       - ARIZE_SPACE_ID=${ARIZE_SPACE_ID:-}
     depends_on:
@@ -704,7 +703,7 @@ Set `PHOENIX_API_KEY` in `.env`. The same `phoenix` destination routes traces to
 
 **Stage 3 — Arize Cloud**
 
-Set `OTEL_DESTINATION=arize` with `ARIZE_ENDPOINT`, `ARIZE_API_KEY`, and `ARIZE_SPACE_ID`. Replace self-hosted Phoenix with Arize's managed platform. Benefits: persistent storage, team access, scheduled evaluations, drift monitoring.
+Set `OTEL_DESTINATION=arize` with `ARIZE_API_KEY` and `ARIZE_SPACE_ID`. The `arize.otel.register()` SDK handles the endpoint internally. Replace self-hosted Phoenix with Arize's managed platform. Benefits: persistent storage, team access, scheduled evaluations, drift monitoring.
 
 **Migration overlap:** Set `OTEL_DESTINATION=both` to send traces to both Phoenix and Arize during the transition. Remove Phoenix when confident in Arize.
 

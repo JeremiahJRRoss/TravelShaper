@@ -110,7 +110,6 @@ OTEL_DESTINATION=phoenix
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 
 # Arize Cloud (optional — only needed if OTEL_DESTINATION=arize or both)
-# ARIZE_ENDPOINT=https://otlp.arize.com/v1
 # ARIZE_API_KEY=
 # ARIZE_SPACE_ID=
 ```
@@ -529,11 +528,11 @@ TravelShaper uses configurable OTel routing controlled by `OTEL_DESTINATION` in 
 | Value | Destination | Required env vars |
 |-------|-------------|-------------------|
 | `phoenix` (default) | Local Phoenix or Phoenix Cloud | `PHOENIX_ENDPOINT`; optionally `PHOENIX_API_KEY` for Cloud |
-| `arize` | Arize Cloud | `ARIZE_ENDPOINT`, `ARIZE_API_KEY`, `ARIZE_SPACE_ID` |
+| `arize` | Arize Cloud | `ARIZE_API_KEY`, `ARIZE_SPACE_ID` |
 | `both` | Phoenix and Arize simultaneously | All of the above |
 | `none` | Disabled — no traces sent | None |
 
-The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider` with the appropriate OTLP exporters. If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
 
 ---
 

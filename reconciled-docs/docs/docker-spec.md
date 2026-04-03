@@ -33,15 +33,17 @@ RUN poetry config virtualenvs.create false \
 # - openinference-instrumentation-langchain: same constraint family
 # - openinference-semantic-conventions: OpenInference attribute keys for Phoenix UI
 # - opentelemetry-sdk: core OTel SDK used by otel_routing.py TracerProvider
-# - opentelemetry-exporter-otlp-proto-http: OTLP exporter for Phoenix and Arize
+# - opentelemetry-exporter-otlp-proto-http: OTLP exporter for Phoenix
 # - openai: direct SDK needed for place + preference validation classifiers
+# - arize-otel: provides arize.otel.register() for Arize Cloud integration
 RUN pip install --no-cache-dir \
     arize-phoenix-otel \
     openinference-instrumentation-langchain \
     openinference-semantic-conventions \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-http \
-    openai
+    openai \
+    arize-otel
 
 # Copy application code
 COPY . .
@@ -87,7 +89,6 @@ services:
     environment:
       - OTEL_DESTINATION=${OTEL_DESTINATION:-phoenix}
       - PHOENIX_ENDPOINT=http://phoenix:6006/v1/traces
-      - ARIZE_ENDPOINT=${ARIZE_ENDPOINT:-}
       - ARIZE_API_KEY=${ARIZE_API_KEY:-}
       - ARIZE_SPACE_ID=${ARIZE_SPACE_ID:-}
     depends_on:
@@ -172,9 +173,15 @@ only needs the lightweight sender packages (`arize-phoenix-otel`,
 **Why `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` are installed:**
 The `otel_routing.py` module builds a `TracerProvider` with `BatchSpanProcessor` and
 `OTLPSpanExporter` directly from the OpenTelemetry SDK. These packages are required
-for the configurable OTel routing introduced in v0.3.0, which supports sending traces
-to Phoenix, Arize Cloud, both, or neither — controlled by the `OTEL_DESTINATION`
+for the Phoenix destination in the configurable OTel routing, which supports sending
+traces to Phoenix, Arize Cloud, both, or neither — controlled by the `OTEL_DESTINATION`
 environment variable.
+
+**Why `arize-otel` is installed:**
+The `arize-otel` package provides `arize.otel.register()`, which is the official SDK
+for connecting to Arize Cloud. It handles the Arize endpoint, authentication, and
+project naming internally. Used by `otel_routing.py` when `OTEL_DESTINATION` is set
+to `arize` or `both`.
 
 **Why `openai` is installed via pip:**
 The `openai` SDK is used by the place validation and preference validation classifiers
