@@ -91,6 +91,8 @@ services:
       - PHOENIX_ENDPOINT=http://phoenix:6006/v1/traces
       - ARIZE_API_KEY=${ARIZE_API_KEY:-}
       - ARIZE_SPACE_ID=${ARIZE_SPACE_ID:-}
+      - OTLP_ENDPOINT=${OTLP_ENDPOINT:-}
+      - OTLP_HEADERS=${OTLP_HEADERS:-}
     depends_on:
       phoenix:
         condition: service_started
@@ -111,7 +113,7 @@ The Makefile reads `OTEL_DESTINATION` from `.env` and starts Phoenix only when
 needed:
 
 ```bash
-make up        # reads .env, starts Phoenix if OTEL_DESTINATION=phoenix or both
+make up        # reads .env, starts Phoenix if OTEL_DESTINATION=phoenix, both, or all
 make down      # stops the stack
 ```
 
@@ -173,15 +175,15 @@ only needs the lightweight sender packages (`arize-phoenix-otel`,
 **Why `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` are installed:**
 The `otel_routing.py` module builds a `TracerProvider` with `BatchSpanProcessor` and
 `OTLPSpanExporter` directly from the OpenTelemetry SDK. These packages are required
-for the Phoenix destination in the configurable OTel routing, which supports sending
-traces to Phoenix, Arize Cloud, both, or neither — controlled by the `OTEL_DESTINATION`
+for the Phoenix and generic OTLP destinations in the configurable OTel routing, which supports sending
+traces to Phoenix, Arize Cloud, any OTLP-compatible backend, combinations of all three, or neither — controlled by the `OTEL_DESTINATION`
 environment variable.
 
 **Why `arize-otel` is installed:**
 The `arize-otel` package provides `arize.otel.register()`, which is the official SDK
 for connecting to Arize Cloud. It handles the Arize endpoint, authentication, and
 project naming internally. Used by `otel_routing.py` when `OTEL_DESTINATION` is set
-to `arize` or `both`.
+to `arize`, `both`, or `all`.
 
 **Why `openai` is installed via pip:**
 The `openai` SDK is used by the place validation and preference validation classifiers
@@ -189,7 +191,7 @@ in `api.py`. It is not declared in `pyproject.toml` to keep the Poetry dependenc
 clean — it is installed directly here alongside the other pip packages.
 
 **Why Phoenix uses a Docker Compose profile:**
-Phoenix is optional as of v0.3.0. When `OTEL_DESTINATION` is set to `arize` or `none`,
+Phoenix is optional as of v0.3.0. When `OTEL_DESTINATION` is set to `arize`, `otlp`, or `none`,
 there is no reason to run the Phoenix container. The `profiles: [phoenix]` key means
 Phoenix only starts when explicitly requested via `--profile phoenix` or when the
 Makefile detects that Phoenix is needed from the `.env` configuration.

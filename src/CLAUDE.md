@@ -18,7 +18,7 @@ All commands run from `src/`.
 ## OTel goal
 Replace the hardcoded Phoenix setup in agent.py with a routing
 module driven by OTEL_DESTINATION in .env.
-Valid values: phoenix | arize | both | none
+Valid values: phoenix | arize | otlp | both | all | none
 
 ## Do not touch
 - tools/           — output truncation only, do not touch routing or API logic

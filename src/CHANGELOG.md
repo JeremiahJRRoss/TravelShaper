@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0] — 2026-04-04
+
+### Generic OTLP destination
+
+- Added `otlp` destination to `OTEL_DESTINATION` — sends traces to any
+  OTLP-compatible backend (Jaeger, Grafana Tempo, Honeycomb, Datadog, etc.)
+  using the existing `OTLPSpanExporter`
+- Added `all` destination — sends traces to Phoenix, Arize, and generic OTLP
+  simultaneously
+- New env vars: `OTLP_ENDPOINT` (required for `otlp`/`all`), `OTLP_HEADERS`
+  (optional comma-separated `key=value` auth headers)
+- Added `_parse_otlp_headers()` and `_otlp_exporter()` helpers to
+  `otel_routing.py`
+- `both` destination unchanged (Arize + Phoenix only) for backward
+  compatibility
+- Updated `docker-compose.yml` to pass through `OTLP_ENDPOINT` and
+  `OTLP_HEADERS`
+- Added 4 unit tests for generic OTLP routing (31 total)
+- No new packages required
+
 ## [0.3.2] — 2026-04-02
 
 ### Token reduction (PR 2 of 2)

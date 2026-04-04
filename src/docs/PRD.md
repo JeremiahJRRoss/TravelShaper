@@ -81,7 +81,7 @@ TravelShaper is explicitly **not** intended to:
 | Interest discovery | Web search scoped to the traveler's stated interests (food, arts, events, fitness, nature, photography) |
 | Synthesized briefing | LLM combines all tool results into a single opinionated travel recommendation |
 | Budget-aware ranking | Recommendations are shaped by the traveler's budget preference |
-| Configurable observability | OTel routing to Phoenix, Arize Cloud, both, or none — controlled by `OTEL_DESTINATION` in `.env` |
+| Configurable observability | OTel routing to Phoenix, Arize Cloud, any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, etc.), combinations of all three, or none — controlled by `OTEL_DESTINATION` in `.env` |
 | Evaluation | Three LLM-as-judge metrics (user frustration, tool correctness, answer completeness) on traced queries |
 | Tests | 25 unit tests covering tool schemas, agent graph construction, prompt routing, API endpoints, and OTel routing |
 | Docker | Dockerfile for the application; docker-compose.yml including optional Phoenix |
@@ -334,7 +334,7 @@ Assess whether the response covers everything the user asked for, with scope awa
 | test_tools.py | 4 | Tool input/output format, empty result handling |
 | test_agent.py | 6 | Graph structure, tool registration, voice routing, dispatch phase detection |
 | test_api.py | 8 | HTTP endpoints, place validation, preference validation |
-| test_otel_routing.py | 8 | OTel destination selection, credential handling, exporter creation, project name |
+| test_otel_routing.py | 13 | OTel destination selection, credential handling, exporter creation, project name, generic OTLP, headers parsing |
 
 ### 11.2 Test execution
 

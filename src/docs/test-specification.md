@@ -129,7 +129,7 @@ Assertion: 200 response; agent called.
 
 ---
 
-## tests/test_otel_routing.py (8 tests)
+## tests/test_otel_routing.py (13 tests)
 
 All tests mock `OTLPSpanExporter` and use `patch.dict(os.environ)` to control
 environment variables. No live OTel endpoints are required.
@@ -158,15 +158,31 @@ Assertion: returns a non-None provider without crashing.
 Sets `OTEL_DESTINATION=both` with Phoenix endpoint. Mocks both `_build_arize_provider` and `OTLPSpanExporter`.
 Assertion: `_build_arize_provider` called once; `OTLPSpanExporter` called once.
 
-### Test 25 — test_none_destination_creates_no_exporters
+### Test 25 — test_otlp_destination_creates_one_exporter
+Sets `OTEL_DESTINATION=otlp` and `OTLP_ENDPOINT=http://tempo:4318/v1/traces`.
+Assertions: `OTLPSpanExporter` called exactly once; endpoint contains "tempo:4318".
+
+### Test 26 — test_otlp_headers_parsed_and_passed
+Sets `OTEL_DESTINATION=otlp` with `OTLP_ENDPOINT=https://api.honeycomb.io/v1/traces` and `OTLP_HEADERS=x-honeycomb-team=abc123,x-honeycomb-dataset=prod`.
+Assertions: exporter headers contain `x-honeycomb-team: abc123` and `x-honeycomb-dataset: prod`.
+
+### Test 27 — test_otlp_missing_endpoint_skips_silently
+Sets `OTEL_DESTINATION=otlp` with empty `OTLP_ENDPOINT`.
+Assertions: `OTLPSpanExporter` never called; returns a non-None provider.
+
+### Test 28 — test_all_destination_creates_all_exporters
+Sets `OTEL_DESTINATION=all` with `PHOENIX_ENDPOINT` and `OTLP_ENDPOINT`. Mocks both `_build_arize_provider` and `OTLPSpanExporter`.
+Assertions: `_build_arize_provider` called once; `OTLPSpanExporter` called twice (once for Phoenix, once for generic OTLP).
+
+### Test 29 — test_none_destination_creates_no_exporters
 Sets `OTEL_DESTINATION=none`.
 Assertion: `OTLPSpanExporter` never called.
 
-### Test 26 — test_project_name_sets_service_name
+### Test 30 — test_project_name_sets_service_name
 Sets `OTEL_DESTINATION=none` and `OTEL_PROJECT_NAME=my-custom-project`.
-Assertion: `provider.resource.attributes.get("service.name") == "my-custom-project"`.
+Assertion: `provider.resource.attributes.get("service.name") == "my-custom-project".`
 
-### Test 27 — test_default_project_name_is_travelshaper
+### Test 31 — test_default_project_name_is_travelshaper
 Sets `OTEL_DESTINATION=none` without `OTEL_PROJECT_NAME`.
 Assertion: `provider.resource.attributes.get("service.name") == "travelshaper"`.
 
@@ -179,4 +195,4 @@ cd src
 pytest tests/ -v
 ```
 
-Expected output: `27 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).
+Expected output: `31 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).

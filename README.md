@@ -103,7 +103,7 @@ OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
 
 # Telemetry routing — controls where traces are sent
-# Options: phoenix | arize | both | none
+# Options: phoenix | arize | otlp | both | all | none
 OTEL_DESTINATION=phoenix
 
 # Project name in Phoenix/Arize dashboards
@@ -115,6 +115,10 @@ PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 # Arize Cloud (optional — only needed if OTEL_DESTINATION=arize or both)
 # ARIZE_API_KEY=
 # ARIZE_SPACE_ID=
+
+# Generic OTLP (optional — only needed if OTEL_DESTINATION=otlp or all)
+# OTLP_ENDPOINT=http://localhost:4318/v1/traces
+# OTLP_HEADERS=                              # e.g. "x-api-key=abc123,x-org-id=myorg"
 ```
 
 **Step 2.** Build and start the stack:
@@ -327,11 +331,13 @@ SERPAPI_API_KEY=...
 OTEL_DESTINATION=phoenix
 OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
+# OTLP_ENDPOINT=http://localhost:4318/v1/traces    # only if OTEL_DESTINATION=otlp or all
+# OTLP_HEADERS=                                    # comma-separated key=value pairs
 ```
 
 Tests do **not** need API keys — all external calls are mocked.
 
-### 4. Run all 27 tests
+### 4. Run all 31 tests
 
 ```bash
 pytest tests/ -v
@@ -364,11 +370,15 @@ tests/test_otel_routing.py::test_phoenix_no_api_key_sends_no_auth_header   PASSE
 tests/test_otel_routing.py::test_arize_destination_calls_arize_register    PASSED
 tests/test_otel_routing.py::test_arize_missing_credentials_skips_silently  PASSED
 tests/test_otel_routing.py::test_both_destination_uses_arize_and_phoenix   PASSED
+tests/test_otel_routing.py::test_otlp_destination_creates_one_exporter     PASSED
+tests/test_otel_routing.py::test_otlp_headers_parsed_and_passed           PASSED
+tests/test_otel_routing.py::test_otlp_missing_endpoint_skips_silently     PASSED
+tests/test_otel_routing.py::test_all_destination_creates_all_exporters    PASSED
 tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
 tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_default_project_name_is_travelshaper      PASSED
 
-27 passed
+31 passed
 ```
 
 You can also run individual test files:
@@ -377,7 +387,7 @@ You can also run individual test files:
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 9 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 13 OTel routing tests
 ```
 
 A deprecation warning about `temperature` in `model_kwargs` is expected and harmless.
@@ -450,7 +460,7 @@ src/
 │   ├── test_tools.py               # 4 tool tests
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 9 OTel routing tests
+│   └── test_otel_routing.py        # 13 OTel routing tests
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRD.md
@@ -535,12 +545,14 @@ TravelShaper uses configurable OTel routing controlled by `OTEL_DESTINATION` in 
 |-------|-------------|-------------------|
 | `phoenix` (default) | Local Phoenix or Phoenix Cloud | `PHOENIX_ENDPOINT`; optionally `PHOENIX_API_KEY` for Cloud |
 | `arize` | Arize Cloud | `ARIZE_API_KEY`, `ARIZE_SPACE_ID` |
-| `both` | Phoenix and Arize simultaneously | All of the above |
+| `otlp` | Any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, Datadog, etc.) | `OTLP_ENDPOINT`; optionally `OTLP_HEADERS` |
+| `both` | Phoenix and Arize simultaneously | All Phoenix + Arize vars |
+| `all` | Phoenix, Arize, and generic OTLP simultaneously | All of the above |
 | `none` | Disabled — no traces sent | None |
 
 Set `OTEL_PROJECT_NAME` to control the project name in Phoenix/Arize dashboards (default: `travelshaper`).
 
-The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`). If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. For `otlp`, it creates a `TracerProvider` with an `OTLPSpanExporter` pointed at `OTLP_ENDPOINT`, with optional auth headers from `OTLP_HEADERS` (comma-separated `key=value` pairs). For `all`, it starts with Arize and adds both Phoenix and OTLP exporters. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`). If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
 
 ---
 
@@ -557,7 +569,7 @@ There is a pattern in how TravelShaper makes its choices, and the pattern is wor
 - **Place validation before agent** — gpt-4o-mini catches misspellings and rejects fictional places before the expensive agent runs.
 - **gpt-4o-mini for validation** — faster and cheaper than gpt-4o for simple classification tasks; sufficient accuracy for binary decisions.
 - **Single-turn design** — each request is independent. This is a deliberate product boundary, not a gap.
-- **Configurable OTel routing** — `OTEL_DESTINATION` in `.env` controls where traces go, supporting local Phoenix, Arize Cloud, both, or none.
+- **Configurable OTel routing** — `OTEL_DESTINATION` in `.env` controls where traces go, supporting local Phoenix, Arize Cloud, any OTLP-compatible backend, combinations of all three, or none.
 
 ---
 
@@ -612,7 +624,7 @@ docker compose logs --tail 100 phoenix
 
 **Missing traces in Phoenix** — confirm Phoenix is running (`docker ps`). Run at least one `/chat` query.
 
-**Phoenix not starting** — if `OTEL_DESTINATION` is set to `arize` or `none`, Phoenix won't start (by design). Set it to `phoenix` or `both` and use `make up` or `docker compose --profile phoenix up -d`.
+**Phoenix not starting** — if `OTEL_DESTINATION` is set to `arize`, `otlp`, or `none`, Phoenix won't start (by design). Set it to `phoenix`, `both`, or `all` and use `make up` or `docker compose --profile phoenix up -d`.
 
 ---
 
