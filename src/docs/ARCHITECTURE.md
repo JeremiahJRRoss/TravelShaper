@@ -456,7 +456,7 @@ else:
     LangChainInstrumentor().instrument(tracer_provider=_tracer_provider)
 ```
 
-Custom spans in `api.py` also branch on `OTEL_SEMCONV`: OpenInference mode sets `SpanAttributes.INPUT_VALUE` and `SpanAttributes.OUTPUT_VALUE`; GenAI mode sets `gen_ai.request.input` and `gen_ai.response.output` as plain string attributes.
+Custom spans in `api.py` also branch on `OTEL_SEMCONV`: OpenInference mode sets `SpanAttributes.INPUT_VALUE` and `SpanAttributes.OUTPUT_VALUE` as span attributes; GenAI mode uses standard span events (`gen_ai.content.prompt` and `gen_ai.content.completion`) and span attributes (`gen_ai.system`, `gen_ai.request.model`).
 
 **Analogy:** OpenTelemetry is like HTTP — it moves data from A to B. OpenInference is like HTML — it gives that data structure and meaning that the receiver (Phoenix) knows how to render.
 
