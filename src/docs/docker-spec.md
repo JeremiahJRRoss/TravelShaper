@@ -33,7 +33,8 @@ RUN poetry config virtualenvs.create false \
 # - openinference-instrumentation-langchain: same constraint family
 # - openinference-semantic-conventions: OpenInference attribute keys for Phoenix UI
 # - opentelemetry-sdk: core OTel SDK used by otel_routing.py TracerProvider
-# - opentelemetry-exporter-otlp-proto-http: OTLP exporter for Phoenix
+# - opentelemetry-exporter-otlp-proto-http: OTLP/HTTP exporter for Phoenix and generic OTLP
+# - opentelemetry-exporter-otlp-proto-grpc: OTLP/gRPC exporter for generic OTLP (OTLP_PROTOCOL=grpc)
 # - openai: direct SDK needed for place + preference validation classifiers
 # - arize-otel: provides arize.otel.register() for Arize Cloud integration
 RUN pip install --no-cache-dir \
@@ -42,6 +43,7 @@ RUN pip install --no-cache-dir \
     openinference-semantic-conventions \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-http \
+    opentelemetry-exporter-otlp-proto-grpc \
     openai \
     arize-otel
 
@@ -93,6 +95,7 @@ services:
       - ARIZE_SPACE_ID=${ARIZE_SPACE_ID:-}
       - OTLP_ENDPOINT=${OTLP_ENDPOINT:-}
       - OTLP_HEADERS=${OTLP_HEADERS:-}
+      - OTLP_PROTOCOL=${OTLP_PROTOCOL:-http}
     depends_on:
       phoenix:
         condition: service_started
@@ -175,9 +178,17 @@ only needs the lightweight sender packages (`arize-phoenix-otel`,
 **Why `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` are installed:**
 The `otel_routing.py` module builds a `TracerProvider` with `BatchSpanProcessor` and
 `OTLPSpanExporter` directly from the OpenTelemetry SDK. These packages are required
-for the Phoenix and generic OTLP destinations in the configurable OTel routing, which supports sending
-traces to Phoenix, Arize Cloud, any OTLP-compatible backend, combinations of all three, or neither — controlled by the `OTEL_DESTINATION`
+for the Phoenix and generic OTLP destinations in the configurable OTel routing, which
+supports sending traces to Phoenix, Arize Cloud, any OTLP-compatible backend,
+combinations of all three, or none — controlled by the `OTEL_DESTINATION`
 environment variable.
+
+**Why `opentelemetry-exporter-otlp-proto-grpc` is installed:**
+The generic OTLP destination supports both HTTP and gRPC transport, controlled by the
+`OTLP_PROTOCOL` environment variable (`http` default, `grpc` optional). The gRPC
+exporter package provides `OTLPGrpcSpanExporter` used when `OTLP_PROTOCOL=grpc`. If
+the package is missing, `otel_routing.py` falls back to the HTTP exporter with a
+warning — the application never crashes due to a missing gRPC package.
 
 **Why `arize-otel` is installed:**
 The `arize-otel` package provides `arize.otel.register()`, which is the official SDK

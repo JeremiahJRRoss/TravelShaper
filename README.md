@@ -117,8 +117,10 @@ PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 # ARIZE_SPACE_ID=
 
 # Generic OTLP (optional — only needed if OTEL_DESTINATION=otlp or all)
-# OTLP_ENDPOINT=http://localhost:4318/v1/traces
-# OTLP_HEADERS=                              # e.g. "x-api-key=abc123,x-org-id=myorg"
+# OTLP_PROTOCOL=http                        # "http" (default) or "grpc"
+# OTLP_ENDPOINT=http://localhost:4318/v1/traces  # http (port 4318, path required)
+# OTLP_ENDPOINT=http://localhost:4317            # grpc (port 4317, no path)
+# OTLP_HEADERS=                              # comma-separated key=value pairs
 ```
 
 **Step 2.** Build and start the stack:
@@ -371,9 +373,13 @@ tests/test_otel_routing.py::test_arize_destination_calls_arize_register    PASSE
 tests/test_otel_routing.py::test_arize_missing_credentials_skips_silently  PASSED
 tests/test_otel_routing.py::test_both_destination_uses_arize_and_phoenix   PASSED
 tests/test_otel_routing.py::test_otlp_destination_creates_one_exporter     PASSED
-tests/test_otel_routing.py::test_otlp_headers_parsed_and_passed           PASSED
-tests/test_otel_routing.py::test_otlp_missing_endpoint_skips_silently     PASSED
-tests/test_otel_routing.py::test_all_destination_creates_all_exporters    PASSED
+tests/test_otel_routing.py::test_otlp_headers_parsed_and_passed            PASSED
+tests/test_otel_routing.py::test_otlp_missing_endpoint_skips_silently      PASSED
+tests/test_otel_routing.py::test_all_destination_creates_all_exporters     PASSED
+tests/test_otel_routing.py::test_otlp_grpc_protocol_uses_grpc_exporter    PASSED
+tests/test_otel_routing.py::test_otlp_grpc_headers_passed_correctly        PASSED
+tests/test_otel_routing.py::test_otlp_grpc_fallback_when_package_missing   PASSED
+tests/test_otel_routing.py::test_otlp_http_protocol_explicit               PASSED
 tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
 tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_default_project_name_is_travelshaper      PASSED
@@ -387,7 +393,7 @@ You can also run individual test files:
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 13 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 17 OTel routing tests
 ```
 
 A deprecation warning about `temperature` in `model_kwargs` is expected and harmless.
@@ -460,7 +466,7 @@ src/
 │   ├── test_tools.py               # 4 tool tests
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 13 OTel routing tests
+│   └── test_otel_routing.py        # 17 OTel routing tests
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRD.md
@@ -545,14 +551,16 @@ TravelShaper uses configurable OTel routing controlled by `OTEL_DESTINATION` in 
 |-------|-------------|-------------------|
 | `phoenix` (default) | Local Phoenix or Phoenix Cloud | `PHOENIX_ENDPOINT`; optionally `PHOENIX_API_KEY` for Cloud |
 | `arize` | Arize Cloud | `ARIZE_API_KEY`, `ARIZE_SPACE_ID` |
-| `otlp` | Any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, Datadog, etc.) | `OTLP_ENDPOINT`; optionally `OTLP_HEADERS` |
+| `otlp` | Any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, Datadog, etc.) | `OTLP_ENDPOINT`; optionally `OTLP_PROTOCOL`, `OTLP_HEADERS` |
 | `both` | Phoenix and Arize simultaneously | All Phoenix + Arize vars |
 | `all` | Phoenix, Arize, and generic OTLP simultaneously | All of the above |
 | `none` | Disabled — no traces sent | None |
 
 Set `OTEL_PROJECT_NAME` to control the project name in Phoenix/Arize dashboards (default: `travelshaper`).
 
-The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. For `otlp`, it creates a `TracerProvider` with an `OTLPSpanExporter` pointed at `OTLP_ENDPOINT`, with optional auth headers from `OTLP_HEADERS` (comma-separated `key=value` pairs). For `all`, it starts with Arize and adds both Phoenix and OTLP exporters. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`). If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+**Generic OTLP protocol selection:** When using `otlp` or `all`, set `OTLP_PROTOCOL` to `http` (default) or `grpc`. HTTP uses port 4318 with a `/v1/traces` path suffix; gRPC uses port 4317 with no path. If the gRPC package is not installed, the exporter falls back to HTTP with a warning.
+
+The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. For `otlp`, it builds an HTTP or gRPC exporter based on `OTLP_PROTOCOL`, pointed at `OTLP_ENDPOINT`, with optional auth headers from `OTLP_HEADERS` (comma-separated `key=value` pairs). For `all`, it starts with Arize and adds both Phoenix and OTLP exporters. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`). If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
 
 ---
 
@@ -569,7 +577,7 @@ There is a pattern in how TravelShaper makes its choices, and the pattern is wor
 - **Place validation before agent** — gpt-4o-mini catches misspellings and rejects fictional places before the expensive agent runs.
 - **gpt-4o-mini for validation** — faster and cheaper than gpt-4o for simple classification tasks; sufficient accuracy for binary decisions.
 - **Single-turn design** — each request is independent. This is a deliberate product boundary, not a gap.
-- **Configurable OTel routing** — `OTEL_DESTINATION` in `.env` controls where traces go, supporting local Phoenix, Arize Cloud, any OTLP-compatible backend, combinations of all three, or none.
+- **Configurable OTel routing** — `OTEL_DESTINATION` in `.env` controls where traces go, supporting local Phoenix, Arize Cloud, any OTLP-compatible backend (via HTTP or gRPC), all three simultaneously, or none.
 
 ---
 

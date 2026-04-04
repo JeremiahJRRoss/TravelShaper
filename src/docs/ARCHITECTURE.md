@@ -104,7 +104,7 @@ src/
 │   ├── test_tools.py          # 4 tool tests
 │   ├── test_agent.py          # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py            # 8 API + validation tests
-│   └── test_otel_routing.py   # 13 OTel routing tests
+│   └── test_otel_routing.py   # 17 OTel routing tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile                   # Build/test/demo automation
@@ -162,7 +162,7 @@ Owns all OpenTelemetry configuration. Reads `OTEL_DESTINATION` from `.env` and b
 Valid values for `OTEL_DESTINATION`:
 - `phoenix` — sends traces to local Phoenix or Phoenix Cloud
 - `arize` — sends traces to Arize Cloud (requires `ARIZE_API_KEY` + `ARIZE_SPACE_ID`)
-- `otlp` — sends traces to any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, Datadog, etc.; requires `OTLP_ENDPOINT`, optionally `OTLP_HEADERS`)
+- `otlp` — sends traces to any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, Datadog, etc.; requires `OTLP_ENDPOINT`; `OTLP_PROTOCOL` selects transport: `http` (default) or `grpc`; optionally `OTLP_HEADERS`)
 - `both` — sends traces to Phoenix and Arize simultaneously
 - `all` — sends traces to Phoenix, Arize, and generic OTLP simultaneously
 - `none` — disables all telemetry
@@ -418,7 +418,7 @@ TravelShaper's observability stack has two distinct layers that work together:
 **OpenTelemetry (OTLP) — The Transport Layer**
 
 OpenTelemetry is a vendor-neutral standard for collecting and exporting telemetry data (traces, metrics, logs). In TravelShaper:
-- `otel_routing.build_tracer_provider()` configures a `TracerProvider` with a `Resource` (`service.name` from `OTEL_PROJECT_NAME`). For Phoenix and generic OTLP, it uses `BatchSpanProcessor` with `OTLPSpanExporter`. For Arize, it uses `arize.otel.register()` which returns a fully configured provider
+- `otel_routing.build_tracer_provider()` configures a `TracerProvider` with a `Resource` (`service.name` from `OTEL_PROJECT_NAME`). For Phoenix, it uses `BatchSpanProcessor` with `OTLPSpanExporter`. For Arize, it uses `arize.otel.register()` which returns a fully configured provider. For generic OTLP, it uses either the HTTP or gRPC exporter based on `OTLP_PROTOCOL`
 - Every span carries a trace ID, parent ID, start/end timestamps, and arbitrary attributes
 - The transport is agnostic — it works identically whether the destination is Phoenix, Jaeger, Datadog, or Arize Cloud
 
@@ -675,6 +675,7 @@ services:
       - ARIZE_SPACE_ID=${ARIZE_SPACE_ID:-}
       - OTLP_ENDPOINT=${OTLP_ENDPOINT:-}
       - OTLP_HEADERS=${OTLP_HEADERS:-}
+      - OTLP_PROTOCOL=${OTLP_PROTOCOL:-http}
     depends_on:
       phoenix:
         condition: service_started
@@ -713,7 +714,7 @@ Set `OTEL_DESTINATION=arize` with `ARIZE_API_KEY` and `ARIZE_SPACE_ID`. The `ari
 
 **Stage 4 — Third-party OTLP backends**
 
-Set `OTEL_DESTINATION=otlp` with `OTLP_ENDPOINT` pointing to any OTLP-compatible backend (Jaeger, Grafana Tempo, Honeycomb, Datadog, etc.). Use `OTLP_HEADERS` for authentication (comma-separated `key=value` pairs, e.g. `x-honeycomb-team=abc123`). No proprietary SDK needed — uses the standard `OTLPSpanExporter`.
+Set `OTEL_DESTINATION=otlp` with `OTLP_ENDPOINT` pointing to any OTLP-compatible backend (Jaeger, Grafana Tempo, Honeycomb, Datadog, etc.). Set `OTLP_PROTOCOL=grpc` for gRPC transport or leave it as `http` (default). Use `OTLP_HEADERS` for authentication (comma-separated `key=value` pairs, e.g. `x-honeycomb-team=abc123`). No proprietary SDK needed — uses the standard `OTLPSpanExporter` (HTTP) or `OTLPGrpcSpanExporter` (gRPC).
 
 **Migration overlap:** Set `OTEL_DESTINATION=both` to send traces to both Phoenix and Arize during a transition. Set `OTEL_DESTINATION=all` to send traces to Phoenix, Arize, and a generic OTLP backend simultaneously.
 
@@ -736,7 +737,7 @@ All transitions require only `.env` changes — no application code modification
 | Tool schema tests | test_tools.py | 4 | Input types, output format, docstring presence | Mocked |
 | Agent graph tests | test_agent.py | 6 | Nodes, edges, routing, dispatch vs synthesis phase | Mocked |
 | API endpoint tests | test_api.py | 8 | HTTP status codes, response shapes, validation pipeline | Mocked |
-| OTel routing tests | test_otel_routing.py | 13 | Exporter creation, credential handling, destination selection, project name, generic OTLP, headers parsing | Mocked |
+| OTel routing tests | test_otel_routing.py | 17 | Exporter creation, credential handling, destination selection, generic OTLP, headers parsing, gRPC protocol, fallback, project name | Mocked |
 | Integration tests (manual) | — | — | Full request with live APIs during demo | Live |
 
 ### 14.2 Mocking approach
@@ -746,7 +747,7 @@ Tests use `unittest.mock.patch` to replace external API calls. OTel routing test
 ### 14.3 Test execution
 
 ```bash
-pytest tests/ -v    # 31 passed
+pytest tests/ -v    # 35 passed
 ```
 
 ---

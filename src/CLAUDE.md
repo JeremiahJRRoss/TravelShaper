@@ -19,6 +19,7 @@ All commands run from `src/`.
 Replace the hardcoded Phoenix setup in agent.py with a routing
 module driven by OTEL_DESTINATION in .env.
 Valid values: phoenix | arize | otlp | both | all | none
+OTLP_PROTOCOL selects transport: http (default) or grpc
 
 ## Do not touch
 - tools/           — output truncation only, do not touch routing or API logic

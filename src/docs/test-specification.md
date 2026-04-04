@@ -1,7 +1,7 @@
 # Test Specification — TravelShaper Travel Assistant
 
 **Version:** 2.1 (v0.3.2)  
-**Total tests:** 26 passing  
+**Total tests:** 35 passing  
 **Every test uses mocked external calls.** No test requires a live API key.
 
 ---
@@ -20,8 +20,9 @@ Validation functions are mocked at the `api` module level:
 - `api.validate_place`
 - `api.agent`
 
-OTel routing tests mock environment variables and the OTLP exporter:
+OTel routing tests mock environment variables and the OTLP exporters:
 - `otel_routing.OTLPSpanExporter`
+- `otel_routing.OTLPGrpcSpanExporter`
 - `os.environ` (via `patch.dict`)
 
 ---
@@ -129,10 +130,10 @@ Assertion: 200 response; agent called.
 
 ---
 
-## tests/test_otel_routing.py (13 tests)
+## tests/test_otel_routing.py (17 tests)
 
-All tests mock `OTLPSpanExporter` and use `patch.dict(os.environ)` to control
-environment variables. No live OTel endpoints are required.
+All tests mock `OTLPSpanExporter` (and `OTLPGrpcSpanExporter` for gRPC tests) and use
+`patch.dict(os.environ)` to control environment variables. No live OTel endpoints are required.
 
 ### Test 19 — test_phoenix_destination_creates_one_exporter
 Sets `OTEL_DESTINATION=phoenix` and `PHOENIX_ENDPOINT=http://localhost:6006/v1/traces`.
@@ -174,15 +175,33 @@ Assertions: `OTLPSpanExporter` never called; returns a non-None provider.
 Sets `OTEL_DESTINATION=all` with `PHOENIX_ENDPOINT` and `OTLP_ENDPOINT`. Mocks both `_build_arize_provider` and `OTLPSpanExporter`.
 Assertions: `_build_arize_provider` called once; `OTLPSpanExporter` called twice (once for Phoenix, once for generic OTLP).
 
-### Test 29 — test_none_destination_creates_no_exporters
+### Test 29 — test_otlp_grpc_protocol_uses_grpc_exporter
+Sets `OTEL_DESTINATION=otlp`, `OTLP_PROTOCOL=grpc`, endpoint `http://localhost:4317`.
+Mocks `OTLPGrpcSpanExporter`.
+Assertions: `OTLPGrpcSpanExporter` called once; endpoint contains "localhost:4317".
+
+### Test 30 — test_otlp_grpc_headers_passed_correctly
+Sets `OTEL_DESTINATION=otlp`, `OTLP_PROTOCOL=grpc`, with `authorization=Bearer tok123,x-scope-orgid=myorg`.
+Mocks `OTLPGrpcSpanExporter`.
+Assertion: parsed headers passed to gRPC exporter with correct key-value pairs.
+
+### Test 31 — test_otlp_grpc_fallback_when_package_missing
+Sets `OTEL_DESTINATION=otlp`, `OTLP_PROTOCOL=grpc`, but patches `OTLPGrpcSpanExporter` to `None`.
+Assertions: falls back to `OTLPSpanExporter` (HTTP); provider is non-None; no crash.
+
+### Test 32 — test_otlp_http_protocol_explicit
+Sets `OTEL_DESTINATION=otlp`, `OTLP_PROTOCOL=http` explicitly, endpoint `http://localhost:4318/v1/traces`.
+Assertion: `OTLPSpanExporter` (HTTP) called once; gRPC exporter not used.
+
+### Test 33 — test_none_destination_creates_no_exporters
 Sets `OTEL_DESTINATION=none`.
 Assertion: `OTLPSpanExporter` never called.
 
-### Test 30 — test_project_name_sets_service_name
+### Test 34 — test_project_name_sets_service_name
 Sets `OTEL_DESTINATION=none` and `OTEL_PROJECT_NAME=my-custom-project`.
 Assertion: `provider.resource.attributes.get("service.name") == "my-custom-project".`
 
-### Test 31 — test_default_project_name_is_travelshaper
+### Test 35 — test_default_project_name_is_travelshaper
 Sets `OTEL_DESTINATION=none` without `OTEL_PROJECT_NAME`.
 Assertion: `provider.resource.attributes.get("service.name") == "travelshaper"`.
 
@@ -195,4 +214,4 @@ cd src
 pytest tests/ -v
 ```
 
-Expected output: `31 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).
+Expected output: `35 passed` (1 warning about `temperature` in `model_kwargs` is expected and harmless).

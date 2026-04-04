@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.1] — 2026-04-04
+
+### gRPC transport support for generic OTLP destination
+
+- Added `OTLP_PROTOCOL` env var — selects `http` (default) or `grpc` transport
+  for the generic OTLP destination (`OTEL_DESTINATION=otlp` or `all`)
+- HTTP uses port 4318 with `/v1/traces` path; gRPC uses port 4317 with no path
+- If the gRPC package is not installed, falls back to HTTP with a warning
+- Added `opentelemetry-exporter-otlp-proto-grpc` to Dockerfile
+- Added `OTLP_PROTOCOL` to `docker-compose.yml` and `.env.example`
+- Added conditional gRPC import with `try/except ImportError` fallback
+- Added 4 unit tests: gRPC exporter selection, gRPC header passthrough,
+  fallback when package missing, explicit HTTP protocol (17 OTel routing tests total)
+- Updated README, ARCHITECTURE, docker-spec, test-specification, RUNNING docs
+- Fully backward compatible — omitting `OTLP_PROTOCOL` defaults to HTTP
+
 ## [0.4.0] — 2026-04-04
 
 ### Generic OTLP destination
