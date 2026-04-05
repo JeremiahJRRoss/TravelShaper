@@ -96,7 +96,7 @@ cd src
 copy .env.example .env
 ```
 
-Open `.env` in any text editor and add your OpenAI and SerpAPI keys. Optionally configure the telemetry destination:
+Open `.env` in any text editor and add your OpenAI and SerpAPI keys. Optionally configure the telemetry destination and semantic conventions:
 
 ```
 OPENAI_API_KEY=sk-...
@@ -105,6 +105,10 @@ SERPAPI_API_KEY=...
 # Telemetry routing — controls where traces are sent
 # Options: phoenix | arize | otlp | both | all | none
 OTEL_DESTINATION=phoenix
+
+# Semantic conventions — controls span attribute format
+# Options: openinference (default, for Phoenix/Arize) | genai (for Jaeger/Tempo/Datadog)
+# OTEL_SEMCONV=openinference
 
 # Project name in Phoenix/Arize dashboards
 OTEL_PROJECT_NAME=travelshaper
@@ -331,6 +335,7 @@ Open `.env` and add your keys:
 OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
 OTEL_DESTINATION=phoenix
+OTEL_SEMCONV=openinference
 OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 # OTLP_ENDPOINT=http://localhost:4318/v1/traces    # only if OTEL_DESTINATION=otlp or all
@@ -339,7 +344,7 @@ PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 
 Tests do **not** need API keys — all external calls are mocked.
 
-### 4. Run all 31 tests
+### 4. Run all 39 tests
 
 ```bash
 pytest tests/ -v
@@ -383,8 +388,12 @@ tests/test_otel_routing.py::test_otlp_http_protocol_explicit               PASSE
 tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
 tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_default_project_name_is_travelshaper      PASSED
+tests/test_otel_routing.py::test_semconv_defaults_to_openinference         PASSED
+tests/test_otel_routing.py::test_semconv_genai_selection                   PASSED
+tests/test_otel_routing.py::test_semconv_openinference_instrumentor_loads  PASSED
+tests/test_otel_routing.py::test_semconv_genai_with_missing_package_does_not_crash PASSED
 
-31 passed
+39 passed
 ```
 
 You can also run individual test files:
@@ -393,7 +402,7 @@ You can also run individual test files:
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 17 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 21 OTel routing + semconv tests
 ```
 
 A deprecation warning about `temperature` in `model_kwargs` is expected and harmless.
@@ -441,7 +450,7 @@ python -m evaluations.run_evals
 src/
 ├── api.py                          # FastAPI server — /chat, /chat/stream, /health, static UI
 ├── agent.py                        # LangGraph agent — three system prompts, voice routing, dispatch phase
-├── otel_routing.py                 # OTel config routing (OTEL_DESTINATION in .env)
+├── otel_routing.py                 # OTel config routing (OTEL_DESTINATION + OTEL_SEMCONV in .env)
 ├── static/index.html               # Browser UI — Bebas Neue / Cormorant Garamond / DM Sans
 ├── tools/
 │   ├── __init__.py                 # serpapi_request() helper
@@ -466,7 +475,7 @@ src/
 │   ├── test_tools.py               # 4 tool tests
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 17 OTel routing tests
+│   └── test_otel_routing.py        # 21 OTel routing + semconv tests
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRD.md
@@ -475,13 +484,14 @@ src/
 │   ├── docker-spec.md
 │   ├── evaluation-prompts.md
 │   ├── trace-queries.md
+│   ├── traces-architecture.md
 │   ├── implementation-plan.md
-│   └── presentation-outline.md
+│   ├── presentation-outline.md
+│   └── RECONCILIATION-AUDIT.md
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile                        # Build/test/demo automation
 ├── pyproject.toml
-├── RUNNING.md
 └── CHANGELOG.md
 ```
 
@@ -493,13 +503,14 @@ The `docs/` directory contains the full design record for the project. Each docu
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE.md](src/docs/ARCHITECTURE.md) | Software architecture document covering component design, data flow, LLM decision making, system prompt rationale, tool design patterns, input validation architecture, OTel routing, deployment topology, and the decision log. |
+| [ARCHITECTURE.md](src/docs/ARCHITECTURE.md) | Software architecture document covering component design, data flow, LLM decision making, system prompt rationale, tool design patterns, input validation architecture, OTel routing, semantic conventions, deployment topology, and the decision log. |
 | [PRD.md](src/docs/PRD.md) | Product requirements document defining the target user, jobs to be done, functional and non-functional requirements, scope boundaries, API contract, and evaluation criteria. |
 | [system-prompt-spec.md](src/docs/system-prompt-spec.md) | Specification for the three system prompts (dispatch, save-money, full-experience) including voice definitions, phase-based routing logic, and design reasoning. |
-| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 26 tests across four test files, including mock path rules, exact mock data shapes, and assertion criteria. |
+| [test-specification.md](src/docs/test-specification.md) | Complete specification for all 39 tests across four test files, including mock path rules, exact mock data shapes, and assertion criteria. |
 | [docker-spec.md](src/docs/docker-spec.md) | Dockerfile and docker-compose.yml with line-by-line commentary, including why OTel packages are installed via pip and why Phoenix uses Docker profiles. |
 | [evaluation-prompts.md](src/docs/evaluation-prompts.md) | The exact prompts used in the Phoenix evaluation pipeline for all three metrics, with rationale for why each metric was chosen. |
 | [trace-queries.md](src/docs/trace-queries.md) | All 11 trace queries with their expected tool dispatch, voice routing, and a coverage matrix. |
+| [traces-architecture.md](src/docs/traces-architecture.md) | How traces flow through TravelShaper — from instrumentation at startup through span collection, export, and evaluation. |
 | [implementation-plan.md](src/docs/implementation-plan.md) | Step-by-step build plan used during development. |
 | [presentation-outline.md](src/docs/presentation-outline.md) | 20–25 minute presentation outline. |
 
@@ -537,6 +548,12 @@ Browser / curl
      tool_node → llm_call (synthesis with voice prompt)
            │
      SSE stream / JSON response → browser / client
+           │
+     ── Observability (configurable) ──
+           │
+           ├── otel_routing.py reads OTEL_DESTINATION + OTEL_SEMCONV
+           ├── OpenInference or GenAI semantic conventions
+           └── Traces → Phoenix / Arize / OTLP / all / none
 ```
 
 For the full architecture narrative, see [docs/ARCHITECTURE.md](src/docs/ARCHITECTURE.md).
@@ -545,7 +562,9 @@ For the full architecture narrative, see [docs/ARCHITECTURE.md](src/docs/ARCHITE
 
 ## Telemetry Configuration
 
-TravelShaper uses configurable OTel routing controlled by `OTEL_DESTINATION` in your `.env` file. This determines where traces are sent without any code changes.
+TravelShaper uses configurable OTel routing controlled by two environment variables in your `.env` file: `OTEL_DESTINATION` determines where traces are sent, and `OTEL_SEMCONV` determines what attribute format they use.
+
+### Trace destinations (OTEL_DESTINATION)
 
 | Value | Destination | Required env vars |
 |-------|-------------|-------------------|
@@ -560,7 +579,18 @@ Set `OTEL_PROJECT_NAME` to control the project name in Phoenix/Arize dashboards 
 
 **Generic OTLP protocol selection:** When using `otlp` or `all`, set `OTLP_PROTOCOL` to `http` (default) or `grpc`. HTTP uses port 4318 with a `/v1/traces` path suffix; gRPC uses port 4317 with no path. If the gRPC package is not installed, the exporter falls back to HTTP with a warning.
 
-The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK, which handles endpoints, authentication, and project naming internally. For `both`, it starts with the Arize provider and adds a Phoenix exporter to it. For `otlp`, it builds an HTTP or gRPC exporter based on `OTLP_PROTOCOL`, pointed at `OTLP_ENDPOINT`, with optional auth headers from `OTLP_HEADERS` (comma-separated `key=value` pairs). For `all`, it starts with Arize and adds both Phoenix and OTLP exporters. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME` (default: `travelshaper`). If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+### Semantic conventions (OTEL_SEMCONV)
+
+| Value | Package | Key attributes | Best for |
+|-------|---------|----------------|----------|
+| `openinference` (default) | `openinference-instrumentation-langchain` | `input.value`, `output.value`, `llm.model_name` | Phoenix, Arize |
+| `genai` | `opentelemetry-instrumentation-langchain` | `gen_ai.request.model`, `gen_ai.usage.input_tokens` | Jaeger, Tempo, Datadog, Honeycomb |
+
+When using `OTEL_DESTINATION=otlp` with standard backends, set `OTEL_SEMCONV=genai` for spans with OTel GenAI semantic conventions. When using Phoenix or Arize, keep the default `OTEL_SEMCONV=openinference` for native rendering.
+
+The routing module (`otel_routing.py`) reads these variables at startup and configures a `TracerProvider`. For Phoenix, it uses a manual `TracerProvider` with an `OTLPSpanExporter`. For Arize, it uses the official `arize.otel.register()` SDK. For `both`, it starts with the Arize provider and adds a Phoenix exporter. For `otlp`, it builds an HTTP or gRPC exporter based on `OTLP_PROTOCOL`. For `all`, it starts with Arize and adds both Phoenix and OTLP exporters. The `TracerProvider` resource `service.name` is set from `OTEL_PROJECT_NAME`. If credentials are missing for a destination, it logs a warning and skips that destination gracefully.
+
+For the full trace architecture — how spans flow from instrumentation through collection, export, and evaluation — see [docs/traces-architecture.md](src/docs/traces-architecture.md).
 
 ---
 
@@ -578,6 +608,7 @@ There is a pattern in how TravelShaper makes its choices, and the pattern is wor
 - **gpt-4o-mini for validation** — faster and cheaper than gpt-4o for simple classification tasks; sufficient accuracy for binary decisions.
 - **Single-turn design** — each request is independent. This is a deliberate product boundary, not a gap.
 - **Configurable OTel routing** — `OTEL_DESTINATION` in `.env` controls where traces go, supporting local Phoenix, Arize Cloud, any OTLP-compatible backend (via HTTP or gRPC), all three simultaneously, or none.
+- **Configurable semantic conventions** — `OTEL_SEMCONV` selects between OpenInference (Phoenix/Arize native) and GenAI (standard OTel) span attributes, so the same tracing code works with any backend.
 
 ---
 
