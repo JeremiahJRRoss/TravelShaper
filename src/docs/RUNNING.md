@@ -29,12 +29,18 @@ source .venv/bin/activate        # macOS / Linux
 # .venv\Scripts\activate         # Windows
 ```
 
+Your prompt should now show `(.venv)`. All subsequent commands assume the
+venv is active.
+
 ### 1c. Install Poetry inside the venv
 
 ```bash
 pip install --upgrade pip
 pip install poetry==1.8.2
 ```
+
+Poetry is now isolated to this venv and will not affect any system-wide
+Python installation.
 
 ### 1d. Install project dependencies
 
@@ -45,12 +51,17 @@ poetry install -E dev
 
 #### Phoenix tracing (optional)
 
-The Phoenix packages have Python version constraints that conflict with Poetry's resolver. Install them directly with pip:
+The Phoenix packages (`arize-phoenix-otel` in particular) have Python version
+constraints that conflict with Poetry's resolver on Python 3.11/3.12. Install
+them directly with pip after Poetry finishes:
 
 ```bash
 pip install arize-phoenix arize-phoenix-evals arize-phoenix-otel \
             openinference-instrumentation-langchain
 ```
+
+Because the venv is already active, pip installs into the same environment
+that Poetry just populated — no conflicts.
 
 ### 1e. Configure environment variables
 
@@ -64,15 +75,28 @@ Open `.env` and fill in your keys:
 OPENAI_API_KEY=sk-...
 SERPAPI_API_KEY=...
 
-# Telemetry routing (phoenix | arize | otlp | both | all | none)
-OTEL_DESTINATION=phoenix
+# Telemetry routing (optional)
+OTEL_DESTINATION=phoenix          # phoenix | arize | otlp | both | all | none
+OTEL_SEMCONV=openinference        # openinference | genai
+OTEL_PROJECT_NAME=travelshaper
 PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 
-# Generic OTLP (optional — only needed if OTEL_DESTINATION=otlp or all)
+# Arize Cloud (only needed if OTEL_DESTINATION=arize, both, or all)
+# ARIZE_API_KEY=
+# ARIZE_SPACE_ID=
+
+# Generic OTLP (only needed if OTEL_DESTINATION=otlp or all)
 # OTLP_PROTOCOL=http                        # "http" (default) or "grpc"
 # OTLP_ENDPOINT=http://localhost:4318/v1/traces
 # OTLP_HEADERS=                              # comma-separated key=value pairs
 ```
+
+`PHOENIX_ENDPOINT` is only needed if you are running the Phoenix
+tracing stack. Leave the default value — it will be ignored if Phoenix is
+not running. For Arize Cloud, set `ARIZE_API_KEY` and `ARIZE_SPACE_ID` — the
+endpoint is handled automatically by `arize.otel.register()`. For generic
+OTLP backends (Jaeger, Tempo, Honeycomb, Datadog), set `OTLP_ENDPOINT` and
+optionally `OTLP_HEADERS` for authentication.
 
 ---
 
@@ -84,15 +108,34 @@ PHOENIX_ENDPOINT=http://localhost:6006/v1/traces
 uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Option B — Docker Compose (recommended for full stack)
+The API will be available at `http://localhost:8000`.
 
-Starts TravelShaper and optionally Phoenix:
+Verify it is healthy:
 
 ```bash
-# With Phoenix (default):
-docker compose --profile phoenix up --build -d
+curl http://localhost:8000/health
+# → {"status":"ok"}
+```
 
-# Or use the Makefile (reads OTEL_DESTINATION from .env):
+Send a chat message:
+
+```bash
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Plan a trip from SFO to Tokyo in October. I want to save money and I love food."}'
+```
+
+### Option B — Docker Compose (recommended for full stack)
+
+Starts TravelShaper **and** Phoenix together:
+
+```bash
+docker compose --profile phoenix up --build -d
+```
+
+Or use the Makefile (reads `OTEL_DESTINATION` from `.env`):
+
+```bash
 make up
 ```
 
@@ -100,6 +143,12 @@ make up
 |---------|-----|
 | TravelShaper API | http://localhost:8000 |
 | Phoenix Tracing UI | http://localhost:6006 |
+
+Stop everything:
+
+```bash
+docker compose down
+```
 
 ### Option C — Docker only (no Phoenix)
 
@@ -112,7 +161,7 @@ docker run -p 8000:8000 --env-file .env travelshaper
 
 ## 3. Running the Tests
 
-### All 35 tests (recommended)
+### All 39 tests (recommended)
 
 ```bash
 pytest tests/ -v
@@ -156,8 +205,12 @@ tests/test_otel_routing.py::test_otlp_http_protocol_explicit               PASSE
 tests/test_otel_routing.py::test_none_destination_creates_no_exporters     PASSED
 tests/test_otel_routing.py::test_project_name_sets_service_name            PASSED
 tests/test_otel_routing.py::test_default_project_name_is_travelshaper      PASSED
+tests/test_otel_routing.py::test_semconv_defaults_to_openinference         PASSED
+tests/test_otel_routing.py::test_semconv_genai_selection                   PASSED
+tests/test_otel_routing.py::test_semconv_openinference_instrumentor_loads  PASSED
+tests/test_otel_routing.py::test_semconv_genai_with_missing_package_does_not_crash PASSED
 
-35 passed
+39 passed
 ```
 
 > **No API keys are required to run tests.** All external calls are mocked.
@@ -168,7 +221,7 @@ tests/test_otel_routing.py::test_default_project_name_is_travelshaper      PASSE
 pytest tests/test_tools.py -v          # 4 tool tests
 pytest tests/test_agent.py -v          # 6 agent graph + routing + dispatch tests
 pytest tests/test_api.py -v            # 8 API + validation tests
-pytest tests/test_otel_routing.py -v   # 17 OTel routing tests
+pytest tests/test_otel_routing.py -v   # 21 OTel routing + semconv tests
 ```
 
 ### Run a single test by name
@@ -196,6 +249,11 @@ You can optionally pass a count or custom base URL:
 python -m traces.run_traces 3                          # first 3 queries only
 python -m traces.run_traces all http://localhost:8000   # all queries, custom URL
 ```
+
+The script runs 11 queries covering every tool combination — flights,
+hotels, cultural guide, DuckDuckGo search, budget vs. full-experience
+mode, partial inputs, and edge cases. Each query is followed by a 3-second
+pause to avoid rate limiting.
 
 View traces in the Phoenix UI at **http://localhost:6006** after running queries.
 
@@ -236,7 +294,7 @@ Results are logged back to Phoenix and visible in the **Evaluations** tab.
 src/
 ├── agent.py                        # LangGraph agent — three system prompts, dispatch + voice routing
 ├── api.py                          # FastAPI server (POST /chat, /chat/stream, GET /health)
-├── otel_routing.py                 # OTel config routing (OTEL_DESTINATION in .env)
+├── otel_routing.py                 # OTel config routing (OTEL_DESTINATION + OTEL_SEMCONV in .env)
 ├── tools/
 │   ├── __init__.py                 # SerpAPI helper (serpapi_request)
 │   ├── flights.py                  # search_flights tool
@@ -246,9 +304,10 @@ src/
 │   ├── test_tools.py               # 4 tool unit tests (mocked)
 │   ├── test_agent.py               # 6 agent graph, routing + dispatch tests
 │   ├── test_api.py                 # 8 API + validation tests
-│   └── test_otel_routing.py        # 17 OTel routing tests
+│   └── test_otel_routing.py        # 21 OTel routing + semconv tests
 ├── evaluations/
 │   ├── run_evals.py                # Phoenix evaluation runner — 3 metrics
+│   ├── export_spans.py             # Export Phoenix spans to CSV
 │   └── metrics/
 │       ├── frustration.py          # USER_FRUSTRATION_PROMPT
 │       ├── answer_completeness.py  # ANSWER_COMPLETENESS_PROMPT

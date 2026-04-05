@@ -1,6 +1,6 @@
 # Product Requirements Document — TravelShaper Travel Assistant
 
-**Version:** 1.2
+**Version:** 1.3
 **Date:** April 2026
 **Status:** Implementation phase
 **Author:** [Your Name]
@@ -82,8 +82,9 @@ TravelShaper is explicitly **not** intended to:
 | Synthesized briefing | LLM combines all tool results into a single opinionated travel recommendation |
 | Budget-aware ranking | Recommendations are shaped by the traveler's budget preference |
 | Configurable observability | OTel routing to Phoenix, Arize Cloud, any OTLP-compatible backend (Jaeger, Tempo, Honeycomb, etc.), combinations of all three, or none — controlled by `OTEL_DESTINATION` in `.env` |
+| Configurable semantic conventions | Span attributes use OpenInference (Phoenix/Arize native) or OTel GenAI (standard backends) conventions — controlled by `OTEL_SEMCONV` in `.env` |
 | Evaluation | Three LLM-as-judge metrics (user frustration, tool correctness, answer completeness) on traced queries |
-| Tests | 25 unit tests covering tool schemas, agent graph construction, prompt routing, API endpoints, and OTel routing |
+| Tests | 39 unit tests covering tool schemas, agent graph construction, prompt routing, API endpoints, OTel routing, and semantic convention selection |
 | Docker | Dockerfile for the application; docker-compose.yml including optional Phoenix |
 | API | FastAPI server with `/chat`, `/chat/stream`, and `/health` endpoints |
 
@@ -256,6 +257,7 @@ Response:
 - Every tool invocation must produce a span capturing: tool name, input parameters, output data, and execution time.
 - Spans must be organized into traces that represent a complete user interaction.
 - Trace destination is configurable via `OTEL_DESTINATION` environment variable.
+- Span attribute format is configurable via `OTEL_SEMCONV` environment variable.
 
 ### 8.4 Cost
 
@@ -327,19 +329,19 @@ Assess whether the response covers everything the user asked for, with scope awa
 
 ## 11. Testing Requirements
 
-### 11.1 Unit tests (26 implemented)
+### 11.1 Unit tests (39 implemented)
 
 | File | Count | What it validates |
 |------|-------|-------------------|
 | test_tools.py | 4 | Tool input/output format, empty result handling |
 | test_agent.py | 6 | Graph structure, tool registration, voice routing, dispatch phase detection |
 | test_api.py | 8 | HTTP endpoints, place validation, preference validation |
-| test_otel_routing.py | 13 | OTel destination selection, credential handling, exporter creation, project name, generic OTLP, headers parsing |
+| test_otel_routing.py | 21 | OTel destination selection, credential handling, exporter creation, project name, generic OTLP, headers parsing, gRPC protocol, fallback, semantic convention selection |
 
 ### 11.2 Test execution
 
 ```bash
-pytest tests/ -v    # 26 passed
+pytest tests/ -v    # 39 passed
 ```
 
 All tests pass without requiring external API keys.
@@ -373,7 +375,7 @@ This implementation is successful if:
 3. Configurable OTel tracing captures traces for all LLM calls and tool invocations
 4. 11 diverse queries are traced and exportable
 5. Three evaluation metrics are configured and run against traces
-6. 25 unit tests pass
+6. 39 unit tests pass
 7. A Dockerfile is included and builds successfully
 8. A browser chat interface is served at `http://localhost:8000`
 9. The README documents setup, usage, architecture, and design decisions
